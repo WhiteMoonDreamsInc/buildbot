@@ -39,3 +39,9 @@ Related repositories:
 .. _readthedocs-badge: https://readthedocs.org/projects/buildbot/builds/
 .. |fossa-badge| image:: https://app.fossa.io/api/projects/git%2Bgithub.com%2Fbuildbot%2Fbuildbot.svg?type=shield
 .. _fossa-badge: https://app.fossa.io/projects/git%2Bgithub.com%2Fbuildbot%2Fbuildbot?ref=badge_shield
+
+==============
+WhiteMoonDreamsInc friendly fork
+==============
+
+Right now this is just to get more useful open source plugins and integrations, like Slack and various project CI YAML configuration parsers, into the default buildbot master Dockerfile.
