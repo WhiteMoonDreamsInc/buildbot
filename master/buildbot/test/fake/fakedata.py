@@ -67,7 +67,7 @@ class FakeUpdates(service.AsyncService):
             try:
                 json.dumps(propval)
             except (TypeError, ValueError):
-                self.testcase.fail("value for %s is not JSON-able" % (k,))
+                self.testcase.fail("value for {} is not JSON-able".format(k))
 
     # update methods
 
@@ -149,8 +149,7 @@ class FakeUpdates(service.AsyncService):
         self.testcase.assertIsInstance(sourcestamps, list)
         for ss in sourcestamps:
             if not isinstance(ss, int) and not isinstance(ss, dict):
-                self.testcase.fail("%s (%s) is not an integer or a dictionary"
-                                   % (ss, type(ss)))
+                self.testcase.fail("{} ({}) is not an integer or a dictionary".format(ss, type(ss)))
             del ss  # since we use locals(), below
         self.testcase.assertIsInstance(reason, str)
         self.assertProperties(sourced=True, properties=properties)
@@ -303,7 +302,7 @@ class FakeUpdates(service.AsyncService):
         try:
             json.dumps(value)
         except (TypeError, ValueError):
-            self.testcase.fail("Value for %s is not JSON-able" % name)
+            self.testcase.fail("Value for {} is not JSON-able".format(name))
         validation.verifyType(self.testcase, 'source', source,
                               validation.StringValidator())
         return defer.succeed(None)
@@ -424,6 +423,50 @@ class FakeUpdates(service.AsyncService):
             workerid=workerid,
             paused=paused,
             graceful=graceful)
+
+    # methods form BuildData resource
+    @defer.inlineCallbacks
+    def setBuildData(self, buildid, name, value, source):
+        validation.verifyType(self.testcase, 'buildid', buildid, validation.IntValidator())
+        validation.verifyType(self.testcase, 'name', name, validation.StringValidator())
+        validation.verifyType(self.testcase, 'value', value, validation.BinaryValidator())
+        validation.verifyType(self.testcase, 'source', source, validation.StringValidator())
+        yield self.master.db.build_data.setBuildData(buildid, name, value, source)
+
+    # methods from TestResultSet resource
+    @defer.inlineCallbacks
+    def addTestResultSet(self, builderid, buildid, stepid, description, category, value_unit):
+        validation.verifyType(self.testcase, 'builderid', builderid, validation.IntValidator())
+        validation.verifyType(self.testcase, 'buildid', buildid, validation.IntValidator())
+        validation.verifyType(self.testcase, 'stepid', stepid, validation.IntValidator())
+        validation.verifyType(self.testcase, 'description', description,
+                              validation.StringValidator())
+        validation.verifyType(self.testcase, 'category', category, validation.StringValidator())
+        validation.verifyType(self.testcase, 'value_unit', value_unit, validation.StringValidator())
+
+        test_result_setid = \
+            yield self.master.db.test_result_sets.addTestResultSet(builderid, buildid, stepid,
+                                                                   description, category,
+                                                                   value_unit)
+        return test_result_setid
+
+    @defer.inlineCallbacks
+    def completeTestResultSet(self, test_result_setid, tests_passed=None, tests_failed=None):
+        validation.verifyType(self.testcase, 'test_result_setid', test_result_setid,
+                              validation.IntValidator())
+        validation.verifyType(self.testcase, 'tests_passed', tests_passed,
+                              validation.NoneOk(validation.IntValidator()))
+        validation.verifyType(self.testcase, 'tests_failed', tests_failed,
+                              validation.NoneOk(validation.IntValidator()))
+
+        yield self.master.db.test_result_sets.completeTestResultSet(test_result_setid,
+                                                                    tests_passed, tests_failed)
+
+    # methods from TestResult resource
+    @defer.inlineCallbacks
+    def addTestResults(self, builderid, test_result_setid, result_values):
+        yield self.master.db.test_results.addTestResults(builderid, test_result_setid,
+                                                         result_values)
 
 
 class FakeDataConnector(service.AsyncMultiService):

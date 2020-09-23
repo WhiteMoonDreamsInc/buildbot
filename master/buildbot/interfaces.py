@@ -329,6 +329,12 @@ class IConfigured(Interface):
         pass
 
 
+class IReportGenerator(Interface):
+
+    def generate(self, master, reporter, key, build):
+        pass
+
+
 # #################### Deprecated Status Interfaces   ####################
 
 
@@ -1072,8 +1078,8 @@ class IConfigurator(Interface):
         """
         Alter the buildbot config_dict, as defined in master.cfg
 
-        like the master.cfg, this is run out of the main reactor thread, so this can block, but this can't
-        call most Buildbot facilities.
+        like the master.cfg, this is run out of the main reactor thread, so this can block, but
+        this can't call most Buildbot facilities.
 
         :returns: None
         """

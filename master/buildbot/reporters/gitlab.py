@@ -36,15 +36,14 @@ HOSTED_BASE_URL = 'https://gitlab.com'
 
 class GitLabStatusPush(http.HttpStatusPushBase):
     name = "GitLabStatusPush"
-    neededDetails = dict(wantProperties=True)
 
     @defer.inlineCallbacks
     def reconfigService(self, token,
                         startDescription=None, endDescription=None,
-                        context=None, baseURL=None, verbose=False, **kwargs):
+                        context=None, baseURL=None, verbose=False, wantProperties=True, **kwargs):
 
         token = yield self.renderSecrets(token)
-        yield super().reconfigService(**kwargs)
+        yield super().reconfigService(wantProperties=wantProperties, **kwargs)
 
         self.context = context or Interpolate('buildbot/%(prop:buildername)s')
         self.startDescription = startDescription or 'Build started.'
@@ -86,9 +85,8 @@ class GitLabStatusPush(http.HttpStatusPushBase):
         if context is not None:
             payload['name'] = context
 
-        return self._http.post('/api/v4/projects/%d/statuses/%s' % (
-            project_id, sha),
-            json=payload)
+        return self._http.post('/api/v4/projects/{}/statuses/{}'.format(project_id, sha),
+                json=payload)
 
     @defer.inlineCallbacks
     def getProjectId(self, sourcestamp):
@@ -96,13 +94,12 @@ class GitLabStatusPush(http.HttpStatusPushBase):
         url = giturlparse(sourcestamp['repository'])
         if url is None:
             return None
-        project_full_name = "%s/%s" % (url.owner, url.repo)
-
+        project_full_name = "{}/{}".format(url.owner, url.repo)
         # gitlab needs project name to be fully url quoted to get the project id
         project_full_name = urlquote_plus(project_full_name)
 
         if project_full_name not in self.project_ids:
-            response = yield self._http.get('/api/v4/projects/%s' % (project_full_name))
+            response = yield self._http.get('/api/v4/projects/{}'.format(project_full_name))
             proj = yield response.json()
             if response.code not in (200, ):
                 log.msg(

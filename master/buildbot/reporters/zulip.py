@@ -26,7 +26,6 @@ log = Logger()
 
 class ZulipStatusPush(HttpStatusPushBase):
     name = "ZulipStatusPush"
-    neededDetails = dict(wantProperties=True)
 
     def checkConfig(self, endpoint, token, stream=None, **kwargs):
         if not isinstance(endpoint, str):
@@ -36,8 +35,8 @@ class ZulipStatusPush(HttpStatusPushBase):
         super().checkConfig(**kwargs)
 
     @defer.inlineCallbacks
-    def reconfigService(self, endpoint, token, stream=None, **kwargs):
-        super().reconfigService(**kwargs)
+    def reconfigService(self, endpoint, token, stream=None, wantProperties=True, **kwargs):
+        super().reconfigService(wantProperties=wantProperties, **kwargs)
         self._http = yield httpclientservice.HTTPClientService.getService(
             self.master, endpoint,
             debug=self.debug, verify=self.verify)
@@ -47,8 +46,8 @@ class ZulipStatusPush(HttpStatusPushBase):
     @defer.inlineCallbacks
     def send(self, build):
         event = ("new", "finished")[0 if build["complete_at"] is None else 1]
-        jsondata = dict(event=event, buildid=build["buildid"], buildername=build["builder"]["name"], url=build["url"],
-                        project=build["properties"]["project"][0])
+        jsondata = dict(event=event, buildid=build["buildid"], buildername=build["builder"]["name"],
+                        url=build["url"], project=build["properties"]["project"][0])
         if event == "new":
             jsondata["timestamp"] = int(build["started_at"].timestamp())
         elif event == "finished":
@@ -61,4 +60,5 @@ class ZulipStatusPush(HttpStatusPushBase):
         response = yield self._http.post(url, json=jsondata)
         if response.code != 200:
             content = yield response.content()
-            log.error("{code}: Error pushing build status to Zulip: {content}", code=response.code, content=content)
+            log.error("{code}: Error pushing build status to Zulip: {content}", code=response.code,
+                      content=content)

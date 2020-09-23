@@ -24,11 +24,19 @@ from __future__ import print_function
 
 import os
 import sys
-from distutils.command.install_data import install_data
-from distutils.command.sdist import sdist
-from distutils.core import setup
 
 from buildbot_worker import version
+
+try:
+    # If setuptools is installed, then we'll add setuptools-specific arguments
+    # to the setup args.
+    import setuptools
+    from setuptools import setup
+    from setuptools.command.sdist import sdist
+except ImportError:
+    setuptools = None
+    from distutils.command.sdist import sdist
+    from distutils.core import setup
 
 
 class our_sdist(sdist):
@@ -99,7 +107,7 @@ setup_args = {
         'console_scripts': [
             'buildbot-worker=buildbot_worker.scripts.runner:run',
             # this will also be shipped on non windows :-(
-            'buildbot_worker_windows_service=buildbot_worker.scripts.windows_service:HandleCommandLine',
+            'buildbot_worker_windows_service=buildbot_worker.scripts.windows_service:HandleCommandLine',  # noqa pylint: disable=line-too-long
         ]}
 }
 
@@ -111,14 +119,7 @@ if sys.platform == "win32":
 
 twisted_ver = ">= 17.9.0"
 
-
-try:
-    # If setuptools is installed, then we'll add setuptools-specific arguments
-    # to the setup args.
-    import setuptools  # @UnusedImport
-except ImportError:
-    pass
-else:
+if setuptools is not None:
     setup_args['install_requires'] = [
         'twisted ' + twisted_ver,
         'future',

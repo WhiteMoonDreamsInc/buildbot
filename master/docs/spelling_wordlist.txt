@@ -48,6 +48,7 @@ backends
 Backends
 backoff
 backported
+badgeio
 balancer
 balancers
 basedir
@@ -122,6 +123,7 @@ bzr
 Bzr
 bzrignore
 CaaS
+cacert
 callables
 Callables
 called
@@ -135,6 +137,7 @@ canonicalize
 canStartBuild
 canStartWithWorkerForBuilder
 catchup
+Certifi
 cd
 cfg
 changehook
@@ -155,6 +158,7 @@ checkconfig
 checkConfig
 checkin
 childs
+choco
 chroot
 chroots
 ci
@@ -168,6 +172,7 @@ codebase
 Codebase
 codebaseGenerator
 codebases
+Codecov
 coffeelint
 Coffeelint
 coffeescript
@@ -335,6 +340,7 @@ getRecipients
 getter
 getters
 GiB
+gibibytes
 github
 GitHub
 GitLab
@@ -498,6 +504,7 @@ metabuildbot
 metacharacters
 metadata
 MiB
+mebibytes
 minified
 minifies
 minimalistic
@@ -534,6 +541,7 @@ nd
 ne
 ness
 nestedParameter
+netrc
 netstring
 netstrings
 Nevow
@@ -552,6 +560,7 @@ noticeOnChannel
 novaclient
 npm
 nullability
+nupkg
 oauth
 oAuth
 OAuth
@@ -589,6 +598,7 @@ perl
 petmail
 Phantomjs
 PhantomJS
+picoseconds
 pidfile
 pids
 plaintext
@@ -634,7 +644,7 @@ pyflakes
 Pyflakes
 pyjade
 pypi
-PyPy
+pypugjs
 pysqlite
 pythonic
 Pythonic
@@ -666,6 +676,7 @@ refspec
 regex
 regexp
 regexps
+registerAdapter
 reimplement
 relayhost
 remappings
@@ -867,6 +878,7 @@ unsubscribes
 untracked
 untrusted
 unversioned
+UpCloud
 uploadDirectory
 uploader
 uploadFile
@@ -889,6 +901,7 @@ username
 Username
 usernames
 useTls
+usr
 utf
 UTF
 util

@@ -87,7 +87,7 @@ class GitHubEventHandler(PullRequestMixin):
         if handler is None:
             raise ValueError('Unknown event: {}'.format(event_type))
 
-        result = yield defer.maybeDeferred(lambda: handler(payload, event_type))
+        result = yield handler(payload, event_type)
         return result
 
     @defer.inlineCallbacks
@@ -192,6 +192,8 @@ class GitHubEventHandler(PullRequestMixin):
             log.msg("GitHub PR #{} {}, ignoring".format(number, action))
             return (changes, 'git')
 
+        files = yield self._get_pr_files(repo_full_name, number)
+
         properties = self.extractProperties(payload['pull_request'])
         properties.update({'event': event})
         properties.update({'basename': basename})
@@ -199,6 +201,7 @@ class GitHubEventHandler(PullRequestMixin):
             'revision': payload['pull_request']['head']['sha'],
             'when_timestamp': dateparse(payload['pull_request']['created_at']),
             'branch': refname,
+            'files': files,
             'revlink': payload['pull_request']['_links']['html']['href'],
             'repository': payload['repository']['html_url'],
             'project': payload['pull_request']['base']['repo']['full_name'],
@@ -227,20 +230,57 @@ class GitHubEventHandler(PullRequestMixin):
         :param repo: the repo full name, ``{owner}/{project}``.
             e.g. ``buildbot/buildbot``
         '''
+        if not self._token:
+            return 'No message field'
+
         headers = {
-            'User-Agent': 'Buildbot'
+            'Authorization': 'token ' + self._token,
+            'User-Agent': 'Buildbot',
         }
-        if self._token:
-            headers['Authorization'] = 'token ' + self._token
 
         url = '/repos/{}/commits/{}'.format(repo, sha)
         http = yield httpclientservice.HTTPClientService.getService(
             self.master, self.github_api_endpoint, headers=headers,
             debug=self.debug, verify=self.verify)
         res = yield http.get(url)
-        data = yield res.json()
-        msg = data.get('commit', {'message': 'No message field'})['message']
-        return msg
+        if 200 <= res.code < 300:
+            data = yield res.json()
+            return data['commit']['message']
+
+        log.msg('Failed fetching PR commit message: response code {}'.format(res.code))
+        return 'No message field'
+
+    @defer.inlineCallbacks
+    def _get_pr_files(self, repo, number):
+        """
+        Get Files that belong to the Pull Request
+        :param repo: the repo full name, ``{owner}/{project}``.
+            e.g. ``buildbot/buildbot``
+        :param number: the pull request number.
+        """
+        if not self._token:
+            return []
+
+        headers = {
+            'Authorization': 'token ' + self._token,
+            'User-Agent': 'Buildbot',
+        }
+
+        url = "/repos/{}/pulls/{}/files".format(repo, number)
+        http = yield httpclientservice.HTTPClientService.getService(
+            self.master,
+            self.github_api_endpoint,
+            headers=headers,
+            debug=self.debug,
+            verify=self.verify,
+        )
+        res = yield http.get(url)
+        if 200 <= res.code < 300:
+            data = yield res.json()
+            return [f["filename"] for f in data]
+
+        log.msg('Failed fetching PR files: response code {}'.format(res.code))
+        return []
 
     def _process_change(self, payload, user, repo, repo_url, project, event,
                         properties):
@@ -318,7 +358,7 @@ class GitHubEventHandler(PullRequestMixin):
 
     def _has_skip(self, msg):
         '''
-        The message contains the skipping keyword no not.
+        The message contains the skipping keyword or not.
 
         :return type: Bool
         '''
@@ -344,7 +384,8 @@ class GitHubHandler(BaseHookHandler):
             'codebase': options.get('codebase', None),
             'github_property_whitelist': options.get('github_property_whitelist', None),
             'skips': options.get('skips', None),
-            'github_api_endpoint': options.get('github_api_endpoint', None) or 'https://api.github.com',
+            'github_api_endpoint':
+                options.get('github_api_endpoint', None) or 'https://api.github.com',
             'pullrequest_ref': options.get('pullrequest_ref', None) or 'merge',
             'token': options.get('token', None),
             'debug': options.get('debug', None) or False,

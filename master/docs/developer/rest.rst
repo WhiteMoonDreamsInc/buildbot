@@ -9,10 +9,13 @@
 REST API
 ========
 
-The REST API is a thin wrapper around the data API's "Getter" and "Control" sections.
+The REST API is a public interface which can be used by external code to control Buildbot.
+Internally, the REST API a thin wrapper around the data API's "Getter" and "Control" sections.
 It is also designed, in keeping with REST principles, to be discoverable.
 As such, the details of the paths and resources are not documented here.
 Begin at the root URL, and see the :ref:`Data_API` documentation for more information.
+
+The precise specifications in RAML format are described in :ref:`REST_API_specs` documentation.
 
 .. contents:: :local:
 
@@ -163,127 +166,22 @@ A simple example:
 .. code-block:: none
 
     POST http://build.example.org/api/v2/scheduler/4
-    --> {"jsonrpc": "2.0", "method": "force", "params": {"revision": "abcd", "branch": "dev"}, "id": 843}
+    --> {"jsonrpc": "2.0", "method": "force",
+         "params": {"revision": "abcd", "branch": "dev"},
+         "id": 843}
     <-- {"jsonrpc": "2.0", "result": {"buildsetid": 44}, "id": 843}
 
 Authentication
 ~~~~~~~~~~~~~~
 
-Authentication to the REST API is performed in the same manner as authentication to the main web interface.  Once credentials have been established, a cookie will be set, which must be sent to the buildbot REST API with every request thereafter.  For those buildbot instances using OAuth2 authentication providers, access tokens can be used for automated access.  For example, GitHub's personal access tokens can be used to access the buildbot as a github user without needing to store the username and password of the user.  To use an OAuth2 access token, send a `GET` request to the `/auth/login` with the `token` URL parameter set to the access token that the OAuth2 provider has given you.  A `python` example using `requests` is shown below, where we first authenticate with our OAuth2 access token, and then are able to request otherwise shielded endpoints:
+Authentication to the REST API is performed in the same manner as authentication to the main web interface.
+Once credentials have been established, a cookie will be set, which must be sent to the buildbot REST API with every request thereafter.
 
 .. code-block:: python
 
     import requests
     s = requests.Session()
-    s.get("https://<buildbot_url>/auth/login", params={"token": OAUTH_TOKEN})
+    s.get("https://<buildbot_url>/auth/login", auth=('user', 'passwd'))
     builders = s.get("https://<buildbot_url>/api/v2/builders").json()
 
-.. _Raml-Spec:
-
-Raml Specs
-~~~~~~~~~~
-
-The Data API is documented in `RAML 1.0 format <https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md>`_.
-RAML describes and documents all our data, rest, and javascript APIs in a format that can be easily manipulated by human and machines.
-
-.. jinja:: data_api
-
-    {% for name, type in raml.types.items()|sort %}
-    ..
-       sphinx wants to have at least same number of underline chars than actual tile
-       but has the title is generated, this is a bit more complicated.
-       So we generate hundred of them
-
-    {{type.get("displayName", name)}}
-    {{"."*100}}
-
-    .. bb:rtype:: {{name}}
-
-        {% if 'properties' in type -%}
-        {% for key, value in type.properties.items() -%}
-        :attr {{value.type}} {{key}}: {{raml.reindent(value.description, 4*2)}}
-        {% endfor %}
-    {% if 'example' in type -%}
-
-    ``example``
-
-        .. code-block:: javascript
-
-            {{raml.format_json(type.example, indent=4*2)}}
-
-    {% endif %}
-    {% if 'examples' in type -%}
-    ``examples``
-
-    {% for example in type.examples -%}
-
-        .. code-block:: javascript
-
-            {{raml.format_json(example, indent=4*2)}}
-
-    {% endfor %}
-    {% endif %}
-
-    {{type.description}}
-    {% endif %}
-    {% if name in raml.endpoints_by_type -%}{# if type has endpoints #}
-    Endpoints
-    ---------
-    {% for ep, config in raml.endpoints_by_type[name].items()|sort -%}
-    .. bb:rpath:: {{ep}}
-
-        {% for key, value in config.uriParameters.items() -%}
-            :pathkey {{value.type}} {{key}}: {{raml.reindent(value.description, 4*2)}}
-        {% endfor %}
-    {{config.description}}
-
-    {% if 'get' in config -%}
-    {% set method_ep = config['get'] -%}
-    ``GET``
-        {% if method_ep['eptype'] -%}
-        ``returns``
-            :bb:rtype:`collection` of :bb:rtype:`{{method_ep['eptype']}}`
-        {% endif %}
-
-    {% endif %}{# if ep has get #}
-
-    {% for method, action in raml.iter_actions(config) -%}
-    .. bb:raction:: {{ep}} (method={{method}})
-
-        :body string method:  must be ``{{ method }}``
-
-        {% for key, value in action['body'].items() -%}
-        :body {{value.type}} {{key}}: {{raml.reindent(value.description, 4*2)}}
-        {% endfor %}
-
-    {% endfor %}{# endpoints #}
-    {% endfor %}{# endpoints #}
-    {% endif %}{# if type has endpoints #}
-    {% endfor %}{# for each types #}
-
-    Raw endpoints
-    .............
-
-    Raw endpoints allow to download content in their raw format (i.e. not within a json glue).
-    The ``content-disposition`` http header is set, so that the browser knows which file to store the content to.
-
-    {% for ep, config in raml.rawendpoints.items()|sort %}
-
-    .. bb:rpath:: {{ep}}
-
-        {% for key, value in config.uriParameters.items() -%}
-            :pathkey {{value.type}} {{key}}: {{raml.reindent(value.description, 4*2)}}
-        {% endfor %}
-
-    {{config['get'].description}}
-
-    {% endfor %}
-
-    Raml spec verbatim
-    ..................
-
-    Sometimes Raml is just clearer than formatted text.
-
-    .. code-block:: yaml
-
-        {{raml.reindent(raml.rawraml, 4*1)}}
+For those buildbot instances using OAuth2 authentication providers, it is at the moment not possible to access the authenticated API .

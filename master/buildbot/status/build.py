@@ -20,6 +20,12 @@ from zope.interface import implementer
 
 from buildbot import interfaces
 from buildbot import util
+from buildbot.warnings import warn_deprecated
+
+warn_deprecated(
+    '0.9.0',
+    'buildbot.status.build has been deprecated, consume the buildbot.data APIs'
+)
 
 
 @implementer(interfaces.IBuildStatus, interfaces.IStatusEvent)
@@ -61,7 +67,7 @@ class BuildStatus():
         self.workername = "???"
 
     def __repr__(self):
-        return "<%s #%s>" % (self.__class__.__name__, self.number)
+        return "<{} #{}>".format(self.__class__.__name__, self.number)
 
     # IBuildStatus
 

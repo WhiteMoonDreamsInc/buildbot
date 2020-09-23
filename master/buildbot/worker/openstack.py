@@ -46,30 +46,30 @@ DELETED = 'DELETED'
 UNKNOWN = 'UNKNOWN'
 
 
-class OpenStackLatentWorker(AbstractLatentWorker,
-                            CompatibleLatentWorkerMixin):
+class OpenStackLatentWorker(CompatibleLatentWorkerMixin,
+                            AbstractLatentWorker):
 
     instance = None
     _poll_resolution = 5  # hook point for tests
 
-    def __init__(self, name, password,
-                 flavor,
-                 os_username,
-                 os_password,
-                 os_tenant_name,
-                 os_auth_url,
-                 os_user_domain=None,
-                 os_project_domain=None,
-                 block_devices=None,
-                 region=None,
-                 image=None,
-                 meta=None,
-                 # Have a nova_args parameter to allow passing things directly
-                 # to novaclient.
-                 nova_args=None,
-                 client_version='2',
-                 **kwargs):
-
+    def checkConfig(self, name, password,
+                    flavor,
+                    os_username=None,
+                    os_password=None,
+                    os_tenant_name=None,
+                    os_auth_url=None,
+                    os_user_domain=None,
+                    os_project_domain=None,
+                    os_auth_args=None,
+                    block_devices=None,
+                    region=None,
+                    image=None,
+                    meta=None,
+                    # Have a nova_args parameter to allow passing things directly
+                    # to novaclient.
+                    nova_args=None,
+                    client_version='2',
+                    **kwargs):
         if not client:
             config.error("The python module 'novaclient' is needed  "
                          "to use a OpenStackLatentWorker. "
@@ -79,17 +79,62 @@ class OpenStackLatentWorker(AbstractLatentWorker,
                          "to use a OpenStackLatentWorker. "
                          "Please install the 'keystoneauth1' package.")
 
-        if not block_devices and not image:
+        if block_devices is None and image is None:
             raise ValueError('One of block_devices or image must be given')
 
-        super().__init__(name, password, **kwargs)
+        if os_auth_args is None:
+            if os_auth_url is None:
+                config.error("Missing os_auth_url OpenStackLatentWorker "
+                             "and os_auth_args not provided.")
+            if os_username is None or os_password is None:
+                config.error("Missing os_username / os_password for OpenStackLatentWorker "
+                             "and os_auth_args not provided.")
+        else:
+            # ensure that at least auth_url is provided
+            if os_auth_args.get('auth_url') is None:
+                config.error("Missing 'auth_url' from os_auth_args for OpenStackLatentWorker")
+
+        super().checkConfig(name, password, **kwargs)
+
+    @defer.inlineCallbacks
+    def reconfigService(self, name, password,
+                        flavor,
+                        os_username=None,
+                        os_password=None,
+                        os_tenant_name=None,
+                        os_auth_url=None,
+                        os_user_domain=None,
+                        os_project_domain=None,
+                        os_auth_args=None,
+                        block_devices=None,
+                        region=None,
+                        image=None,
+                        meta=None,
+                        # Have a nova_args parameter to allow passing things directly
+                        # to novaclient.
+                        nova_args=None,
+                        client_version='2',
+                        **kwargs):
+        yield super().reconfigService(name, password, **kwargs)
+
+        if os_auth_args is None:
+            os_auth_args = {
+                    'auth_url': os_auth_url,
+                    'username': os_username,
+                    'password': os_password
+            }
+            if os_tenant_name is not None:
+                os_auth_args['project_name'] = os_tenant_name
+            if os_user_domain is not None:
+                os_auth_args['user_domain_name'] = os_user_domain
+            if os_project_domain is not None:
+                os_auth_args['project_domain_name'] = os_project_domain
 
         self.flavor = flavor
         self.client_version = client_version
         if client:
-            self.novaclient = self._constructClient(
-                client_version, os_username, os_user_domain, os_password, os_tenant_name, os_project_domain,
-                os_auth_url)
+            os_auth_args = yield self.renderSecrets(os_auth_args)
+            self.novaclient = self._constructClient(client_version, os_auth_args)
             if region is not None:
                 self.novaclient.client.region_name = region
 
@@ -102,19 +147,13 @@ class OpenStackLatentWorker(AbstractLatentWorker,
         self.meta = meta
         self.nova_args = nova_args if nova_args is not None else {}
 
-    @staticmethod
-    def _constructClient(client_version, username, user_domain, password, project_name, project_domain,
-                         auth_url):
+    def _constructClient(self, client_version, auth_args):
         """Return a novaclient from the given args."""
-        loader = loading.get_plugin_loader('password')
 
-        # These only work with v3
-        if user_domain is not None or project_domain is not None:
-            auth = loader.load_from_options(auth_url=auth_url, username=username, user_domain_name=user_domain,
-                                            password=password, project_name=project_name, project_domain_name=project_domain)
-        else:
-            auth = loader.load_from_options(auth_url=auth_url, username=username,
-                                            password=password, project_name=project_name)
+        auth_plugin = auth_args.pop('auth_type', 'password')
+        loader = loading.get_plugin_loader(auth_plugin)
+
+        auth = loader.load_from_options(**auth_args)
 
         sess = session.Session(auth=auth)
         return client.Client(client_version, session=sess)
@@ -181,9 +220,10 @@ class OpenStackLatentWorker(AbstractLatentWorker,
             snap = nova.volume_snapshots.get(source_uuid)
             return snap.size
         else:
-            unknown_source = ("The source type '%s' for UUID '%s' is"
-                              " unknown" % (source_type, source_uuid))
+            unknown_source = ("The source type '{}' for UUID '{}' is unknown".format(source_type,
+                                                                                     source_uuid))
             raise ValueError(unknown_source)
+        return None
 
     @defer.inlineCallbacks
     def _getImage(self, build):
@@ -238,33 +278,32 @@ class OpenStackLatentWorker(AbstractLatentWorker,
             raise LatentWorkerFailedToSubstantiate(
                 instance.id, BUILD)
         self.instance = instance
-        log.msg('%s %s starting instance %s (image %s)' %
-                (self.__class__.__name__, self.workername, instance.id,
-                 image_uuid))
+        log.msg('{} {} starting instance {} (image {})'.format(self.__class__.__name__,
+                                                               self.workername, instance.id,
+                                                               image_uuid))
         duration = 0
         interval = self._poll_resolution
         while instance.status.startswith(BUILD):
             time.sleep(interval)
             duration += interval
             if duration % 60 == 0:
-                log.msg('%s %s has waited %d minutes for instance %s' %
-                        (self.__class__.__name__, self.workername, duration // 60,
-                         instance.id))
+                log.msg(('{} {} has waited {} minutes for instance {}'
+                         ).format(self.__class__.__name__, self.workername, duration // 60,
+                                  instance.id))
             try:
                 instance = self.novaclient.servers.get(instance.id)
             except NotFound:
-                log.msg('%s %s instance %s (%s) went missing' %
-                        (self.__class__.__name__, self.workername,
-                         instance.id, instance.name))
+                log.msg('{} {} instance {} ({}) went missing'.format(self.__class__.__name__,
+                                                                     self.workername,
+                                                                     instance.id, instance.name))
                 raise LatentWorkerFailedToSubstantiate(
                     instance.id, instance.status)
         if instance.status == ACTIVE:
             minutes = duration // 60
             seconds = duration % 60
-            log.msg('%s %s instance %s (%s) started '
-                    'in about %d minutes %d seconds' %
-                    (self.__class__.__name__, self.workername,
-                     instance.id, instance.name, minutes, seconds))
+            log.msg('{} {} instance {} ({}) started in about {} minutes {} seconds'.format(
+                    self.__class__.__name__, self.workername, instance.id, instance.name, minutes,
+                    seconds))
             return [instance.id, image_uuid,
                     '%02d:%02d:%02d' % (minutes // 60, minutes % 60, seconds)]
         else:
@@ -279,18 +318,19 @@ class OpenStackLatentWorker(AbstractLatentWorker,
         instance = self.instance
         self.instance = None
         self._stop_instance(instance, fast)
+        return None
 
     def _stop_instance(self, instance, fast):
         try:
             instance = self.novaclient.servers.get(instance.id)
         except NotFound:
             # If can't find the instance, then it's already gone.
-            log.msg('%s %s instance %s (%s) already terminated' %
-                    (self.__class__.__name__, self.workername, instance.id,
-                     instance.name))
+            log.msg('{} {} instance {} ({}) already terminated'.format(self.__class__.__name__,
+                                                                       self.workername, instance.id,
+                                                                       instance.name))
             return
         if instance.status not in (DELETED, UNKNOWN):
             instance.delete()
-            log.msg('%s %s terminating instance %s (%s)' %
-                    (self.__class__.__name__, self.workername, instance.id,
-                     instance.name))
+            log.msg('{} {} terminating instance {} ({})'.format(self.__class__.__name__,
+                                                                self.workername, instance.id,
+                                                                instance.name))

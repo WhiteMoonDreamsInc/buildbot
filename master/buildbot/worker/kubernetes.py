@@ -24,10 +24,10 @@ from buildbot.worker.docker import DockerBaseWorker
 log = Logger()
 
 
-class KubeLatentWorker(DockerBaseWorker, CompatibleLatentWorkerMixin):
+class KubeLatentWorker(CompatibleLatentWorkerMixin,
+                       DockerBaseWorker):
 
     instance = None
-    builds_may_be_incompatible = True
 
     @defer.inlineCallbacks
     def getPodSpec(self, build):
@@ -61,7 +61,8 @@ class KubeLatentWorker(DockerBaseWorker, CompatibleLatentWorkerMixin):
 
     def getServicesContainers(self, build):
         # customization point to create services containers around the build container
-        # those containers will run within the same localhost as the build container (aka within the same pod)
+        # those containers will run within the same localhost as the build container (aka within
+        # the same pod)
         return []
 
     def renderWorkerProps(self, build_props):

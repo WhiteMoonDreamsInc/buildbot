@@ -155,7 +155,11 @@ class NotFound(Exception):
 
 
 def get_plugin_loader(plugin_type):
-    return PasswordLoader()
+    if plugin_type == 'password':
+        return PasswordLoader()
+    if plugin_type == 'token':
+        return TokenLoader()
+    raise ValueError("plugin_type '{}' is not supported".format(plugin_type))
 
 
 class PasswordLoader():
@@ -164,15 +168,31 @@ class PasswordLoader():
         return PasswordAuth(**kwargs)
 
 
+class TokenLoader():
+    def load_from_options(self, **kwargs):
+        return TokenAuth(**kwargs)
+
+
 class PasswordAuth():
 
-    def __init__(self, auth_url, password, project_name, username, user_domain_name=None, project_domain_name=None):
+    def __init__(self, auth_url, password, project_name, username, user_domain_name=None,
+                 project_domain_name=None):
         self.auth_url = auth_url
         self.password = password
         self.project_name = project_name
         self.username = username
         self.user_domain_name = user_domain_name
         self.project_domain_name = project_domain_name
+
+
+class TokenAuth():
+    def __init__(self, auth_url, token):
+        self.auth_url = auth_url
+        self.token = token
+        self.project_name = 'tenant'
+        self.username = 'testuser'
+        self.user_domain_name = 'token'
+        self.project_domain_name = 'token'
 
 
 class Session():

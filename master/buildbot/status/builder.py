@@ -37,9 +37,16 @@ from buildbot.status.build import BuildStatus
 from buildbot.status.buildrequest import BuildRequestStatus
 from buildbot.status.event import Event
 from buildbot.util.lru import LRUCache
+from buildbot.warnings import warn_deprecated
 
 _hush_pyflakes = [SUCCESS, WARNINGS, FAILURE, SKIPPED,
                   EXCEPTION, RETRY, CANCELLED, Results, worst_status]
+
+
+warn_deprecated(
+    '0.9.0',
+    'buildbot.status.worker has been deprecated, consume the buildbot.data APIs'
+)
 
 
 @implementer(interfaces.IBuilderStatus, interfaces.IEventSource)
@@ -240,7 +247,8 @@ class BuilderStatus(styles.Versioned):
                 if got >= num_builds:
                     return
 
-    def eventGenerator(self, branches=None, categories=None, committers=None, projects=None, minTime=0):
+    def eventGenerator(self, branches=None, categories=None, committers=None, projects=None,
+                       minTime=0):
         """ Not implemented """
 
     def subscribe(self, receiver):

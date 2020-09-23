@@ -128,10 +128,11 @@ In other cases, ``parent_buildid`` from buildset can be used:
             master.data.get(('buildsets', req1['buildsetid'])),
             master.data.get(('buildsets', req2['buildsetid']))
         ])
-        if canBeCollapsed and selfBuildset['parent_buildid'] != None and otherBuildset['parent_buildid'] != None:
-           return True
+        if canBeCollapsed and selfBuildset['parent_buildid'] != None and \
+                otherBuildset['parent_buildid'] != None:
+            return True
         else:
-           return False
+            return False
     c['collapseRequests'] = collapseRequests
 
 
@@ -199,7 +200,8 @@ the following approach might be helpful:
         def isBuilding(b):
             return bool(b.building) or bool(b.old_building)
 
-        builders.sort(key = lambda b: (isBuilding(b), b.getNewestCompleteTime(), b.getOldestRequestTime()))
+        builders.sort(key = lambda b: (isBuilding(b), b.getNewestCompleteTime(),
+                                       b.getOldestRequestTime()))
         return builders
 
     c['prioritizeBuilders'] = prioritizeBuilders
@@ -651,7 +653,7 @@ Factory Workdir Functions
 
 .. note::
 
-    While factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderables <renderable>` attribute of every steps.
+    While factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderables <renderable>` attribute of every step.
     A Renderable has access to much more contextual information, and also can return a deferred.
     So you could say ``build_factory.workdir = util.Interpolate("%(src:repository)s`` to achieve similar goal.
 
@@ -729,7 +731,7 @@ Consider the use of a :class:`BuildStep` in :file:`master.cfg`:
 This creates a single instance of class ``MyStep``.
 However, Buildbot needs a new object each time the step is executed.
 An instance of :class:`~buildbot.process.buildstep.BuildStep` remembers how it was constructed, and can create copies of itself.
-When writing a new step class, then, keep in mind are that you cannot do anything "interesting" in the constructor -- limit yourself to checking and storing arguments.
+When writing a new step class, then, keep in mind that you cannot do anything "interesting" in the constructor -- limit yourself to checking and storing arguments.
 
 It is customary to call the parent class's constructor with all otherwise-unspecified keyword arguments.
 Keep a ``**kwargs`` argument on the end of your options, and pass that up to the parent class's constructor.
@@ -912,7 +914,7 @@ Again, note that the log input must be a unicode string.
 Finally, :meth:`~buildbot.process.buildstep.BuildStep.addHTMLLog` is similar to :meth:`~buildbot.process.buildstep.BuildStep.addCompleteLog`, but the resulting log will be tagged as containing HTML.
 The web UI will display the contents of the log using the browser.
 
-The ``logfiles=`` argument to :bb:step:`ShellCommand` and its subclasses creates new log files and fills them in realtime by asking the worker to watch a actual file on disk.
+The ``logfiles=`` argument to :bb:step:`ShellCommand` and its subclasses creates new log files and fills them in realtime by asking the worker to watch an actual file on disk.
 The worker will look for additions in the target file and report them back to the :class:`BuildStep`.
 These additions will be added to the log file by calling :meth:`addStdout`.
 
@@ -1252,14 +1254,14 @@ Then you need a ``templates/mydashboard.html`` file near your ``master.cfg``.
 This template is a standard Jinja_ template which is the default templating engine of Flask_.
 
 .. literalinclude:: mydashboard.html
-   :language: guess
+   :language: html+django
 
 
 .. _Flask: http://flask.pocoo.org/
 .. _Bottle: https://bottlepy.org/docs/dev/
 .. _Bootstrap: http://getbootstrap.com/css/
 .. _Jinja: http://jinja.pocoo.org/
-.. _python-requests: http://docs.python-requests.org/en/master/
+.. _python-requests: https://requests.readthedocs.io/en/master/
 
 
 A Somewhat Whimsical Example (or "It's now customized, how do I deploy it?")
