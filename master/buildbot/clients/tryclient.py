@@ -33,7 +33,8 @@ from twisted.python import runtime
 from twisted.python.procutils import which
 from twisted.spread import pb
 
-from buildbot.status import builder
+from buildbot.process.results import SUCCESS
+from buildbot.process.results import Results
 from buildbot.util import bytes2unicode
 from buildbot.util import now
 from buildbot.util import unicode2bytes
@@ -213,11 +214,11 @@ class MercurialExtractor(SourceStampExtractor):
     def getBaseRevision(self):
         upstream = ""
         if self.repository:
-            upstream = "r'%s'" % self.repository
+            upstream = "r'{}'".format(self.repository)
         output = ''
         try:
             output = yield self.dovc(["log", "--template", "{node}\\n", "-r",
-                                      "max(::. - outgoing(%s))" % upstream])
+                                      "max(::. - outgoing({}))".format(upstream)])
         except RuntimeError:
             # outgoing() will abort if no default-push/default path is
             # configured
@@ -271,8 +272,8 @@ class PerforceExtractor(SourceStampExtractor):
             m = re.search('==== //depot/' + self.branch
                           + r'/([\w/\.\d\-_]+)#(\d+) -', line)
             if m:
-                mpatch += "--- %s#%s\n" % (m.group(1), m.group(2))
-                mpatch += "+++ %s\n" % (m.group(1))
+                mpatch += "--- {}#{}\n".format(m.group(1), m.group(2))
+                mpatch += "+++ {}\n".format(m.group(1))
                 found = True
             else:
                 mpatch += line
@@ -330,6 +331,7 @@ class GitExtractor(SourceStampExtractor):
             d = self.dovc(["remote"])
             d.addCallback(self.fixBranch)
             return d
+        return None
 
     # strip remote prefix from self.branch
     def fixBranch(self, remotes):
@@ -718,6 +720,7 @@ class Try(pb.Referenceable):
             assert self.buildsetStatus
             self._getStatus_1()
             return self.running
+        return None
 
     def _getStatus_1(self, res=None):
         if res:
@@ -810,6 +813,7 @@ class Try(pb.Referenceable):
         if not self.outstanding:
             # all done
             return self.statusDone()
+        return None
 
     def printStatus(self):
         try:
@@ -818,7 +822,7 @@ class Try(pb.Referenceable):
                 if n not in self.outstanding:
                     # the build is finished, and we have results
                     code, text = self.results[n]
-                    t = builder.Results[code]
+                    t = Results[code]
                     if text:
                         t += " ({})".format(" ".join(text))
                 elif self.builds[n]:
@@ -842,11 +846,11 @@ class Try(pb.Referenceable):
         happy = True
         for n in names:
             code, text = self.results[n]
-            t = "{}: {}".format(n, builder.Results[code])
+            t = "{}: {}".format(n, Results[code])
             if text:
                 t += " ({})".format(" ".join(text))
             output(t)
-            if code != builder.SUCCESS:
+            if code != SUCCESS:
                 happy = False
 
         if happy:

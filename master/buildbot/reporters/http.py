@@ -14,7 +14,6 @@
 # Copyright Buildbot Team Members
 
 import abc
-import copy
 
 from twisted.internet import defer
 from twisted.python import log
@@ -23,11 +22,10 @@ from buildbot import config
 from buildbot.reporters import utils
 from buildbot.util import httpclientservice
 from buildbot.util import service
+from buildbot.warnings import warn_deprecated
 
 
 class HttpStatusPushBase(service.BuildbotService):
-    neededDetails = dict()
-
     def checkConfig(self, *args, **kwargs):
         super().checkConfig()
         httpclientservice.HTTPClientService.checkAvailable(self.__class__.__name__)
@@ -35,15 +33,17 @@ class HttpStatusPushBase(service.BuildbotService):
             config.error("builders must be a list or None")
 
     @defer.inlineCallbacks
-    def reconfigService(self, builders=None, debug=None, verify=None, **kwargs):
+    def reconfigService(self, builders=None, debug=None, verify=None,
+                        wantProperties=False, wantSteps=False,
+                        wantPreviousBuild=False, wantLogs=False, **kwargs):
         yield super().reconfigService()
         self.debug = debug
         self.verify = verify
         self.builders = builders
-        self.neededDetails = copy.copy(self.neededDetails)
-        for k, v in kwargs.items():
-            if k.startswith("want"):
-                self.neededDetails[k] = v
+        self.wantProperties = wantProperties
+        self.wantSteps = wantSteps
+        self.wantPreviousBuild = wantPreviousBuild
+        self.wantLogs = wantLogs
 
     @defer.inlineCallbacks
     def startService(self):
@@ -75,7 +75,10 @@ class HttpStatusPushBase(service.BuildbotService):
 
     @defer.inlineCallbacks
     def getMoreInfoAndSend(self, build):
-        yield utils.getDetailsForBuild(self.master, build, **self.neededDetails)
+        yield utils.getDetailsForBuild(self.master, build, wantProperties=self.wantProperties,
+                                       wantSteps=self.wantSteps,
+                                       wantPreviousBuild=self.wantPreviousBuild,
+                                       wantLogs=self.wantLogs)
         if self.filterBuilds(build):
             yield self.send(build)
 
@@ -95,13 +98,14 @@ class HttpStatusPush(HttpStatusPushBase):
         if user is not None and auth is not None:
             config.error("Only one of user/password or auth must be given")
         if user is not None:
-            config.warnDeprecated("0.9.1", "user/password is deprecated, use 'auth=(user, password)'")
+            warn_deprecated("0.9.1", "user/password is deprecated, use 'auth=(user, password)'")
         if (format_fn is not None) and not callable(format_fn):
             config.error("format_fn must be a function")
         super().checkConfig(**kwargs)
 
     @defer.inlineCallbacks
-    def reconfigService(self, serverUrl, user=None, password=None, auth=None, format_fn=None, **kwargs):
+    def reconfigService(self, serverUrl, user=None, password=None, auth=None, format_fn=None,
+                        **kwargs):
         yield super().reconfigService(**kwargs)
         if user is not None:
             auth = (user, password)
@@ -117,5 +121,4 @@ class HttpStatusPush(HttpStatusPushBase):
     def send(self, build):
         response = yield self._http.post("", json=self.format_fn(build))
         if not self.isStatus2XX(response.code):
-            log.msg("%s: unable to upload status: %s" %
-                    (response.code, response.content))
+            log.msg("{}: unable to upload status: {}".format(response.code, response.content))

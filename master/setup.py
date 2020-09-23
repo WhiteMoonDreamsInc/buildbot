@@ -18,6 +18,7 @@
 """
 Standard setup script.
 """
+from setuptools import setup  # isort:skip
 
 
 import glob
@@ -27,16 +28,11 @@ import pkg_resources
 import sys
 from distutils.command.install_data import install_data
 from distutils.command.sdist import sdist
-from distutils.version import LooseVersion
-
-from setuptools import setup
+from pkg_resources import parse_version
 
 from buildbot import version
 
-if "bdist_wheel" in sys.argv:
-    BUILDING_WHEEL = True
-else:
-    BUILDING_WHEEL = False
+BUILDING_WHEEL = bool("bdist_wheel" in sys.argv)
 
 
 def include(d, e):
@@ -45,7 +41,7 @@ def include(d, e):
     'd' -- A directory
     'e' -- A glob pattern"""
 
-    return (d, [f for f in glob.glob('%s/%s' % (d, e)) if os.path.isfile(f)])
+    return (d, [f for f in glob.glob('{}/{}'.format(d, e)) if os.path.isfile(f)])
 
 
 def include_statics(d):
@@ -104,7 +100,7 @@ def define_plugin_entry(name, module_name):
         entry, name = name
     else:
         entry = name
-    return '%s = %s:%s' % (entry, module_name, name)
+    return '{} = {}:{}'.format(entry, module_name, name)
 
 
 def concat_dicts(*dicts):
@@ -176,6 +172,7 @@ setup_args = {
         "buildbot.process",
         "buildbot.process.users",
         "buildbot.reporters",
+        "buildbot.reporters.generators",
         "buildbot.schedulers",
         "buildbot.scripts",
         "buildbot.secrets",
@@ -197,6 +194,7 @@ setup_args = {
         "buildbot.test",
         "buildbot.test.util",
         "buildbot.test.fake",
+        "buildbot.test.fakedb",
         "buildbot.test.fuzz",
         "buildbot.test.integration",
         "buildbot.test.integration.interop",
@@ -231,7 +229,8 @@ setup_args = {
             ('buildbot.changes.bitbucket', ['BitbucketPullrequestPoller']),
             ('buildbot.changes.github', ['GitHubPullrequestPoller']),
             ('buildbot.changes.bonsaipoller', ['BonsaiPoller']),
-            ('buildbot.changes.gerritchangesource', ['GerritChangeSource']),
+            ('buildbot.changes.gerritchangesource', [
+                'GerritChangeSource', 'GerritEventLogPoller']),
             ('buildbot.changes.gitpoller', ['GitPoller']),
             ('buildbot.changes.hgpoller', ['HgPoller']),
             ('buildbot.changes.p4poller', ['P4Source']),
@@ -286,7 +285,6 @@ setup_args = {
                 'Mock', 'MockBuildSRPM', 'MockRebuild']),
             ('buildbot.steps.package.rpm.rpmbuild', ['RpmBuild']),
             ('buildbot.steps.package.rpm.rpmlint', ['RpmLint']),
-            ('buildbot.steps.package.rpm.rpmspec', ['RpmSpec']),
             ('buildbot.steps.python', [
                 'BuildEPYDoc', 'PyFlakes', 'PyLint', 'Sphinx']),
             ('buildbot.steps.python_twisted', [
@@ -317,7 +315,8 @@ setup_args = {
             ('buildbot.steps.vstudio', [
                 'VC6', 'VC7', 'VS2003', 'VC8', 'VS2005', 'VCExpress9', 'VC9',
                 'VS2008', 'VC10', 'VS2010', 'VC11', 'VS2012', 'VC12', 'VS2013',
-                'VC14', 'VS2015', 'MsBuild4', 'MsBuild', 'MsBuild12', 'MsBuild14']),
+                'VC14', 'VS2015', 'VC141', 'VS2017', 'MsBuild4', 'MsBuild',
+                'MsBuild12', 'MsBuild14', 'MsBuild141']),
             ('buildbot.steps.worker', [
                 'SetPropertiesFromEnv', 'FileExists', 'CopyDirectory',
                 'RemoveDirectory', 'MakeDirectory']),
@@ -335,7 +334,10 @@ setup_args = {
             ('buildbot.reporters.github', ['GitHubStatusPush', 'GitHubCommentPush']),
             ('buildbot.reporters.gitlab', ['GitLabStatusPush']),
             ('buildbot.reporters.stash', ['StashStatusPush']),
-            ('buildbot.reporters.bitbucketserver', ['BitbucketServerStatusPush', 'BitbucketServerPRCommentPush']),
+            ('buildbot.reporters.bitbucketserver', [
+                'BitbucketServerStatusPush',
+                'BitbucketServerPRCommentPush'
+            ]),
             ('buildbot.reporters.bitbucket', ['BitbucketStatusPush']),
             ('buildbot.reporters.irc', ['IRC']),
             ('buildbot.reporters.telegram', ['TelegramBot']),
@@ -392,8 +394,10 @@ setup_args = {
                 ('repo.DownloadsFromProperties',
                  'RepoDownloadsFromProperties')]),
             ('buildbot.steps.shellsequence', ['ShellArg']),
-            ('buildbot.util.kubeclientservice', ['KubeHardcodedConfig', 'KubeCtlProxyConfigLoader', 'KubeInClusterConfigLoader']),
-            ('buildbot.www.avatar', ['AvatarGravatar']),
+            ('buildbot.util.kubeclientservice', [
+                'KubeHardcodedConfig', 'KubeCtlProxyConfigLoader', 'KubeInClusterConfigLoader'
+            ]),
+            ('buildbot.www.avatar', ['AvatarGravatar', 'AvatarGitHub']),
             ('buildbot.www.auth', [
                 'UserPasswordAuth', 'HTPasswdAuth', 'RemoteUserAuth', 'CustomAuth']),
             ('buildbot.www.ldapuserinfo', ['LdapUserInfo']),
@@ -408,7 +412,9 @@ setup_args = {
                 'RolesFromDomain']),
             ('buildbot.www.authz.endpointmatchers', [
                 'AnyEndpointMatcher', 'StopBuildEndpointMatcher', 'ForceBuildEndpointMatcher',
-                'RebuildBuildEndpointMatcher', 'AnyControlEndpointMatcher', 'EnableSchedulerEndpointMatcher']),
+                'RebuildBuildEndpointMatcher', 'AnyControlEndpointMatcher',
+                'EnableSchedulerEndpointMatcher'
+            ]),
         ]),
         ('buildbot.webhooks', [
             ('buildbot.www.hooks.base', ['base']),
@@ -455,7 +461,7 @@ if 'a' in version or 'b' in version:
         pip_dist = None
 
     if pip_dist:
-        if LooseVersion(pip_dist.version) < LooseVersion('1.4'):
+        if parse_version(pip_dist.version) < parse_version('1.4'):
             raise RuntimeError(VERSION_MSG)
 
 twisted_ver = ">= 17.9.0"
@@ -471,7 +477,7 @@ setup_args['install_requires'] = [
     'Jinja2 >= 2.1',
     # required for tests, but Twisted requires this anyway
     'zope.interface >= 4.1.1',
-    'sqlalchemy>=1.1.0',
+    'sqlalchemy>=1.2.0',
     'sqlalchemy-migrate>=0.9',
     'python-dateutil>=1.5',
     'txaio ' + txaio_ver,
@@ -485,8 +491,8 @@ test_deps = [
     # http client libraries
     'treq',
     'txrequests',
-    # pyjade required for custom templates tests
-    'pyjade',
+    # pypugjs required for custom templates tests
+    'pypugjs',
     # boto3 and moto required for running EC2 tests
     'boto3',
     'moto',
@@ -529,12 +535,13 @@ setup_args['extras_require'] = {
         'idna >= 0.6',
     ],
     'docs': [
-        'docutils<0.13.0',
-        'sphinx>1.4.0,<2.1.0',
+        'docutils>=0.16.0',
+        'sphinx>=3.2.0',
+        'sphinx-rtd-theme>=0.5',
         'sphinxcontrib-blockdiag',
         'sphinxcontrib-spelling',
+        'sphinxcontrib-websupport',
         'pyenchant',
-        'docutils>=0.8',
         'sphinx-jinja',
         'towncrier',
     ],

@@ -20,7 +20,6 @@ import json
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.internet import utils
-from twisted.internet.protocol import ProcessProtocol
 from twisted.python import log
 
 from buildbot import config
@@ -29,6 +28,7 @@ from buildbot.changes import base
 from buildbot.changes.filter import ChangeFilter
 from buildbot.util import bytes2unicode
 from buildbot.util import httpclientservice
+from buildbot.util.protocol import LineProcessProtocol
 
 
 def _canonicalize_event(event):
@@ -125,14 +125,12 @@ class GerritChangeSourceBase(base.ChangeSource):
         try:
             event = json.loads(bytes2unicode(line))
         except ValueError:
-            msg = "bad json line: %s"
-            log.msg(msg % line)
+            log.msg("bad json line: {}".format(line))
             return defer.succeed(None)
 
         if not(isinstance(event, dict) and "type" in event):
             if self.debug:
-                msg = "no type in event %s"
-                log.msg(msg % line)
+                log.msg("no type in event {}".format(line))
             return defer.succeed(None)
 
         return self.eventReceived(event)
@@ -140,14 +138,13 @@ class GerritChangeSourceBase(base.ChangeSource):
     def eventReceived(self, event):
         if not (event['type'] in self.handled_events):
             if self.debug:
-                msg = "the event type '%s' is not setup to handle"
-                log.msg(msg % event['type'])
+                log.msg("the event type '{}' is not setup to handle".format(event['type']))
             return defer.succeed(None)
 
         # flatten the event dictionary, for easy access with WithProperties
         def flatten(properties, base, event):
             for k, v in event.items():
-                name = "%s.%s" % (base, k)
+                name = "{}.{}".format(base, k)
                 if name in self.EVENT_PROPERTY_BLACKLIST:
                     continue
                 if isinstance(v, dict):
@@ -158,7 +155,7 @@ class GerritChangeSourceBase(base.ChangeSource):
         properties = {}
         flatten(properties, "event", event)
         properties["event.source"] = self.__class__.__name__
-        func_name = "eventReceived_%s" % event["type"].replace("-", "_")
+        func_name = "eventReceived_{}".format(event["type"].replace("-", "_"))
         func = getattr(self, func_name, None)
         if func is None:
             return self.addChangeFromEvent(properties, event)
@@ -174,6 +171,7 @@ class GerritChangeSourceBase(base.ChangeSource):
             "patch_comment": chdict["comments"],
             "repository": chdict["repository"],
             "project": chdict["project"],
+            "codebase": '',
         }
 
         stampid, found_existing = yield(
@@ -213,20 +211,19 @@ class GerritChangeSourceBase(base.ChangeSource):
         # in the core
         event_change = event["change"]
         if event['type'] in ('patchset-created',):
-            return "%s/%s" % (event_change["branch"],
-                              event_change['number'])
+            return "{}/{}".format(event_change["branch"], event_change['number'])
         return event_change["branch"]
 
     @defer.inlineCallbacks
     def addChangeFromEvent(self, properties, event):
         if "change" not in event:
             if self.debug:
-                log.msg("unsupported event %s" % (event["type"],))
+                log.msg("unsupported event {}".format(event["type"]))
             return defer.returnValue(None)
 
         if "patchSet" not in event:
             if self.debug:
-                log.msg("unsupported event %s" % (event["type"],))
+                log.msg("unsupported event {}".format(event["type"]))
             return defer.returnValue(None)
 
         event = _canonicalize_event(event)
@@ -251,6 +248,7 @@ class GerritChangeSourceBase(base.ChangeSource):
             'files': files,
             'category': event["type"],
             'properties': properties})
+        return None
 
     def eventReceived_ref_updated(self, properties, event):
         ref = event["refUpdate"]
@@ -262,8 +260,7 @@ class GerritChangeSourceBase(base.ChangeSource):
         return self.addChange(dict(
             author=author,
             project=ref["project"],
-            repository="%s/%s" % (
-                self.gitBaseURL, ref["project"]),
+            repository="{}/{}".format(self.gitBaseURL, ref["project"]),
             branch=ref["refName"],
             revision=ref["newRev"],
             comments="Gerrit: patchset(s) merged.",
@@ -300,8 +297,7 @@ class GerritChangeSource(GerritChangeSourceBase):
                     identity_file=None,
                     **kwargs):
         if self.name is None:
-            self.name = "GerritChangeSource:%s@%s:%d" % (
-                username, gerritserver, gerritport)
+            self.name = "GerritChangeSource:{}@{}:{}".format(username, gerritserver, gerritport)
         if 'gitBaseURL' not in kwargs:
             kwargs['gitBaseURL'] = "automatic at reconfigure"
         super().checkConfig(**kwargs)
@@ -314,7 +310,7 @@ class GerritChangeSource(GerritChangeSourceBase):
                         name=None,
                         **kwargs):
         if 'gitBaseURL' not in kwargs:
-            kwargs['gitBaseURL'] = "ssh://%s@%s:%s" % (username, gerritserver, gerritport)
+            kwargs['gitBaseURL'] = "ssh://{}@{}:{}".format(username, gerritserver, gerritport)
         self.gerritserver = gerritserver
         self.gerritport = gerritport
         self.username = username
@@ -324,29 +320,24 @@ class GerritChangeSource(GerritChangeSourceBase):
         self.streamProcessTimeout = self.STREAM_BACKOFF_MIN
         return super().reconfigService(**kwargs)
 
-    class LocalPP(ProcessProtocol):
+    class LocalPP(LineProcessProtocol):
 
         def __init__(self, change_source):
+            super().__init__()
             self.change_source = change_source
-            self.data = b""
 
         @defer.inlineCallbacks
-        def outReceived(self, data):
-            """Do line buffering."""
-            self.data += data
-            lines = self.data.split(b"\n")
-            # last line is either empty or incomplete
-            self.data = lines.pop(-1)
-            for line in lines:
-                if self.change_source.debug:
-                    log.msg(b"gerrit: " + line)
-                yield self.change_source.lineReceived(line)
-
-        def errReceived(self, data):
+        def outLineReceived(self, line):
             if self.change_source.debug:
-                log.msg(b"gerrit stderr: " + data)
+                log.msg(b"gerrit: " + line)
+            yield self.change_source.lineReceived(line)
 
-        def processEnded(self, status_object):
+        def errLineReceived(self, line):
+            if self.change_source.debug:
+                log.msg(b"gerrit stderr: " + line)
+
+        def processEnded(self, status):
+            super().processEnded(status)
             self.change_source.streamProcessStopped()
 
     def streamProcessStopped(self):
@@ -385,7 +376,7 @@ class GerritChangeSource(GerritChangeSourceBase):
 
         cmd = [
             "ssh",
-            "%s@%s" % (self.username, self.gerritserver),
+            "{}@{}".format(self.username, self.gerritserver),
             "-p", str(self.gerritport)
         ]
 
@@ -410,8 +401,8 @@ class GerritChangeSource(GerritChangeSourceBase):
                                        "--files", "--patch-sets")
 
         if self.debug:
-            log.msg("querying gerrit for changed files in change %s/%s: %s" %
-                    (change, patchset, cmd))
+            log.msg("querying gerrit for changed files in change {}/{}: {}".format(change, patchset,
+                                                                                   cmd))
 
         out = yield utils.getProcessOutput(cmd[0], cmd[1:], env=None)
         out = out.splitlines()[0]
@@ -438,9 +429,8 @@ class GerritChangeSource(GerritChangeSourceBase):
         status = ""
         if not self.process:
             status = "[NOT CONNECTED - check log]"
-        msg = ("GerritChangeSource watching the remote "
-               "Gerrit repository %s@%s %s")
-        return msg % (self.username, self.gerritserver, status)
+        return (("GerritChangeSource watching the remote "
+                 "Gerrit repository {}@{} {}").format(self.username, self.gerritserver, status))
 
 
 class GerritEventLogPoller(GerritChangeSourceBase):
@@ -500,7 +490,8 @@ class GerritEventLogPoller(GerritChangeSourceBase):
         if self.debug:
             log.msg("Polling gerrit: {}".format(last_event_formatted).encode("utf-8"))
 
-        res = yield self._http.get("/plugins/events-log/events/", params=dict(t1=last_event_formatted))
+        res = yield self._http.get("/plugins/events-log/events/",
+                                   params=dict(t1=last_event_formatted))
         lines = yield res.content()
         for line in lines.splitlines():
             yield self.lineReceived(line)
@@ -514,7 +505,7 @@ class GerritEventLogPoller(GerritChangeSourceBase):
 
     @defer.inlineCallbacks
     def getFiles(self, change, patchset):
-        res = yield self._http.get("/changes/%s/revisions/%s/files/" % (change, patchset))
+        res = yield self._http.get("/changes/{}/revisions/{}/files/".format(change, patchset))
         res = yield res.content()
 
         res = res.splitlines()[1].decode('utf8')  # the first line of every response is `)]}'`

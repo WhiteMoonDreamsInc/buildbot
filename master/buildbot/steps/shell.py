@@ -13,9 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
-import inspect
 import re
 
+from twisted.internet import defer
 from twisted.python import failure
 from twisted.python import log
 from twisted.python.deprecate import deprecatedModuleAttribute
@@ -128,9 +128,23 @@ class ShellCommand(buildstep.LoggingBuildStep):
 
         # check validity of arguments being passed to RemoteShellCommand
         invalid_args = []
-        signature = inspect.signature(
-            remotecommand.RemoteShellCommand.__init__)
-        valid_rsc_args = signature.parameters.keys()
+        valid_rsc_args = [
+            'env',
+            'want_stdout',
+            'want_stderr',
+            'timeout',
+            'maxTime',
+            'sigtermTime',
+            'logfiles',
+            'usePTY',
+            'logEnviron',
+            'collectStdout',
+            'collectStderr',
+            'interruptSignal',
+            'initialStdin',
+            'decodeRC',
+            'stdioLogName',
+        ]
         for arg in kwargs:
             if arg not in valid_rsc_args:
                 invalid_args.append(arg)
@@ -177,7 +191,7 @@ class ShellCommand(buildstep.LoggingBuildStep):
 
         if cmdsummary:
             if self.results != SUCCESS:
-                cmdsummary += ' (%s)' % Results[self.results]
+                cmdsummary += ' ({})'.format(Results[self.results])
             return {'step': cmdsummary}
 
         return super(ShellCommand, self).getResultSummary()
@@ -267,44 +281,54 @@ class ShellCommand(buildstep.LoggingBuildStep):
         self.startCommand(cmd, warnings)
 
 
-class TreeSize(ShellCommand):
+class TreeSize(buildstep.ShellMixin, buildstep.BuildStep):
     name = "treesize"
     command = ["du", "-s", "-k", "."]
-    description = "measuring tree size"
-    kib = None
+    description = ["measuring", "tree", "size"]
 
     def __init__(self, **kwargs):
+        kwargs = self.setupShellMixin(kwargs)
         super().__init__(**kwargs)
         self.observer = logobserver.BufferLogObserver(wantStdout=True,
                                                       wantStderr=True)
         self.addLogObserver('stdio', self.observer)
 
-    def commandComplete(self, cmd):
+    @defer.inlineCallbacks
+    def run(self):
+        cmd = yield self.makeRemoteShellCommand()
+
+        yield self.runCommand(cmd)
+
+        stdio_log = yield self.getLog('stdio')
+        yield stdio_log.finish()
+
         out = self.observer.getStdout()
         m = re.search(r'^(\d+)', out)
-        if m:
-            self.kib = int(m.group(1))
-            self.setProperty("tree-size-KiB", self.kib, "treesize")
 
-    def evaluateCommand(self, cmd):
+        kib = None
+        if m:
+            kib = int(m.group(1))
+            self.setProperty("tree-size-KiB", kib, "treesize")
+            self.descriptionDone = "treesize {} KiB".format(kib)
+        else:
+            self.descriptionDone = "treesize unknown"
+
         if cmd.didFail():
             return FAILURE
-        if self.kib is None:
+        if kib is None:
             return WARNINGS  # not sure how 'du' could fail, but whatever
         return SUCCESS
 
-    def _describe(self, done=False):
-        if self.kib is not None:
-            return ["treesize", "%d KiB" % self.kib]
-        return ["treesize", "unknown"]
 
-
-class SetPropertyFromCommand(ShellCommand):
+class SetPropertyFromCommand(buildstep.ShellMixin, buildstep.BuildStep):
     name = "setproperty"
     renderables = ['property']
 
     def __init__(self, property=None, extract_fn=None, strip=True,
                  includeStdout=True, includeStderr=False, **kwargs):
+
+        kwargs = self.setupShellMixin(kwargs)
+
         self.property = property
         self.extract_fn = extract_fn
         self.strip = strip
@@ -325,40 +349,45 @@ class SetPropertyFromCommand(ShellCommand):
             wantStderr=self.includeStderr)
         self.addLogObserver('stdio', self.observer)
 
-        self.property_changes = {}
+    @defer.inlineCallbacks
+    def run(self):
+        cmd = yield self.makeRemoteShellCommand()
 
-    def commandComplete(self, cmd):
+        yield self.runCommand(cmd)
+
+        stdio_log = yield self.getLog('stdio')
+        yield stdio_log.finish()
+
+        property_changes = {}
+
         if self.property:
             if cmd.didFail():
-                return
+                return FAILURE
             result = self.observer.getStdout()
             if self.strip:
                 result = result.strip()
             propname = self.property
             self.setProperty(propname, result, "SetPropertyFromCommand Step")
-            self.property_changes[propname] = result
+            property_changes[propname] = result
         else:
             new_props = self.extract_fn(cmd.rc,
                                         self.observer.getStdout(),
                                         self.observer.getStderr())
             for k, v in new_props.items():
                 self.setProperty(k, v, "SetPropertyFromCommand Step")
-            self.property_changes = new_props
+            property_changes = new_props
 
-    def createSummary(self, log):
-        if self.property_changes:
-            props_set = ["%s: %r" % (k, v)
-                         for k, v in sorted(self.property_changes.items())]
-            self.addCompleteLog('property changes', "\n".join(props_set))
+        props_set = ["{}: {}".format(k, repr(v))
+                     for k, v in sorted(property_changes.items())]
+        yield self.addCompleteLog('property changes', "\n".join(props_set))
 
-    def describe(self, done=False):
-        if len(self.property_changes) > 1:
-            return ["%d properties set" % len(self.property_changes)]
-        elif len(self.property_changes) == 1:
-            return ["property '%s' set" % list(self.property_changes)[0]]
-        # else:
-        # let ShellCommand describe
-        return super().describe(done)
+        if len(property_changes) > 1:
+            self.descriptionDone = '{} properties set'.format(len(property_changes))
+        elif len(property_changes) == 1:
+            self.descriptionDone = 'property \'{}\' set'.format(list(property_changes)[0])
+        if cmd.didFail():
+            return FAILURE
+        return SUCCESS
 
 
 SetProperty = SetPropertyFromCommand
@@ -367,24 +396,36 @@ deprecatedModuleAttribute(Version("Buildbot", 0, 8, 8),
                           "buildbot.steps.shell", "SetProperty")
 
 
-class Configure(ShellCommand):
+class ShellCommandNewStyle(buildstep.ShellMixin, buildstep.BuildStep):
+    # This is a temporary class until old ShellCommand is retired
+    def __init__(self, **kwargs):
+        kwargs = self.setupShellMixin(kwargs)
+        super().__init__(**kwargs)
 
+    @defer.inlineCallbacks
+    def run(self):
+        cmd = yield self.makeRemoteShellCommand()
+        yield self.runCommand(cmd)
+        return cmd.results()
+
+
+class Configure(ShellCommandNewStyle):
     name = "configure"
     haltOnFailure = 1
     flunkOnFailure = 1
-    description = ["configuring"]
-    descriptionDone = ["configure"]
+    description = "configuring"
+    descriptionDone = "configure"
     command = ["./configure"]
 
 
-class WarningCountingShellCommand(ShellCommand, CompositeStepMixin):
+class WarningCountingShellCommand(buildstep.ShellMixin, CompositeStepMixin, buildstep.BuildStep):
     renderables = [
-                    'suppressionFile',
-                    'suppressionList',
-                    'warningPattern',
-                    'directoryEnterPattern',
-                    'directoryLeavePattern',
-                    'maxWarnCount',
+        'suppressionFile',
+        'suppressionList',
+        'warningPattern',
+        'directoryEnterPattern',
+        'directoryLeavePattern',
+        'maxWarnCount',
     ]
 
     warnCount = 0
@@ -422,9 +463,6 @@ class WarningCountingShellCommand(ShellCommand, CompositeStepMixin):
             self.warningExtractor = WarningCountingShellCommand.warnExtractWholeLine
         self.maxWarnCount = maxWarnCount
 
-        # And upcall to let the base class do its work
-        super().__init__(**kwargs)
-
         if self.__class__ is WarningCountingShellCommand and \
                 not kwargs.get('command'):
             # WarningCountingShellCommand class is directly instantiated.
@@ -432,6 +470,9 @@ class WarningCountingShellCommand(ShellCommand, CompositeStepMixin):
             # later.
             config.error("WarningCountingShellCommand's `command' argument "
                          "is not specified")
+
+        kwargs = self.setupShellMixin(kwargs)
+        super().__init__(**kwargs)
 
         self.suppressions = []
         self.directoryStack = []
@@ -534,7 +575,7 @@ class WarningCountingShellCommand(ShellCommand, CompositeStepMixin):
             if file is not None and file != "" and self.directoryStack:
                 currentDirectory = '/'.join(self.directoryStack)
                 if currentDirectory is not None and currentDirectory != "":
-                    file = "%s/%s" % (currentDirectory, file)
+                    file = "{}/{}".format(currentDirectory, file)
 
             # Skip adding the warning if any suppression matches.
             for fileRe, warnRe, start, end in self.suppressions:
@@ -550,38 +591,49 @@ class WarningCountingShellCommand(ShellCommand, CompositeStepMixin):
         warnings.append(line)
         self.warnCount += 1
 
-    def start(self):
+    @defer.inlineCallbacks
+    def setup_suppression(self):
         if self.suppressionList is not None:
             self.addSuppression(self.suppressionList)
-        if self.suppressionFile is None:
-            return super().start()
-        d = self.getFileContentFromWorker(
-            self.suppressionFile, abandonOnFailure=True)
-        d.addCallback(self.uploadDone)
-        d.addErrback(self.failed)
 
-    def uploadDone(self, data):
-        lines = data.split("\n")
+        if self.suppressionFile is not None:
+            data = yield self.getFileContentFromWorker(self.suppressionFile, abandonOnFailure=True)
+            lines = data.split("\n")
 
-        list = []
-        for line in lines:
-            if self.commentEmptyLineRe.match(line):
-                continue
-            match = self.suppressionLineRe.match(line)
-            if (match):
-                file, test, start, end = match.groups()
-                if (end is not None):
-                    end = int(end)
-                if (start is not None):
-                    start = int(start)
-                    if end is None:
-                        end = start
-                list.append((file, test, start, end))
+            list = []
+            for line in lines:
+                if self.commentEmptyLineRe.match(line):
+                    continue
+                match = self.suppressionLineRe.match(line)
+                if (match):
+                    file, test, start, end = match.groups()
+                    if (end is not None):
+                        end = int(end)
+                    if (start is not None):
+                        start = int(start)
+                        if end is None:
+                            end = start
+                    list.append((file, test, start, end))
 
-        self.addSuppression(list)
-        return super().start()
+            self.addSuppression(list)
 
-    def createSummary(self, log):
+    @defer.inlineCallbacks
+    def run(self):
+        yield self.setup_suppression()
+
+        cmd = yield self.makeRemoteShellCommand()
+        yield self.runCommand(cmd)
+
+        yield self.finish_logs()
+        yield self.createSummary()
+        return self.evaluateCommand(cmd)
+
+    @defer.inlineCallbacks
+    def finish_logs(self):
+        stdio_log = yield self.getLog('stdio')
+        yield stdio_log.finish()
+
+    def createSummary(self):
         """
         Match log lines against warningPattern.
 
@@ -642,29 +694,33 @@ class Test(WarningCountingShellCommand):
         passed += self.getStatistic('tests-passed', 0)
         self.setStatistic('tests-passed', passed)
 
-    def describe(self, done=False):
-        description = super().describe(done)
-        if done:
-            if not description:
-                description = []
-            description = description[:]  # make a private copy
-            if self.hasStatistic('tests-total'):
-                total = self.getStatistic("tests-total", 0)
-                failed = self.getStatistic("tests-failed", 0)
-                passed = self.getStatistic("tests-passed", 0)
-                warnings = self.getStatistic("tests-warnings", 0)
-                if not total:
-                    total = failed + passed + warnings
+    def getResultSummary(self):
+        description = []
 
-                if total:
-                    description.append('%d tests' % total)
-                if passed:
-                    description.append('%d passed' % passed)
-                if warnings:
-                    description.append('%d warnings' % warnings)
-                if failed:
-                    description.append('%d failed' % failed)
-        return description
+        if self.hasStatistic('tests-total'):
+            total = self.getStatistic("tests-total", 0)
+            failed = self.getStatistic("tests-failed", 0)
+            passed = self.getStatistic("tests-passed", 0)
+            warnings = self.getStatistic("tests-warnings", 0)
+            if not total:
+                total = failed + passed + warnings
+
+            if total:
+                description += [str(total), 'tests']
+            if passed:
+                description += [str(passed), 'passed']
+            if warnings:
+                description += [str(warnings), 'warnings']
+            if failed:
+                description += [str(failed), 'failed']
+
+            if description:
+                summary = join_list(description)
+                if self.results != SUCCESS:
+                    summary += ' ({})'.format(Results[self.results])
+                return {'step': summary}
+
+        return super().getResultSummary()
 
 
 class PerlModuleTestObserver(logobserver.LogLineObserver):

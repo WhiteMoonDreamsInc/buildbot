@@ -37,13 +37,15 @@ try:
     assert sphinxcontrib.blockdiag
 except ImportError:
     raise RuntimeError("sphinxcontrib.blockdiag is not installed. "
-                       "Please install documentation dependencies with `pip install buildbot[docs]`")
+                       "Please install documentation dependencies with "
+                       "`pip install buildbot[docs]`")
 
 try:
     pkg_resources.require('docutils>=0.8')
 except pkg_resources.ResolutionError:
     raise RuntimeError("docutils is not installed or has incompatible version. "
-                       "Please install documentation dependencies with `pip install buildbot[docs]`")
+                       "Please install documentation dependencies with `pip "
+                       "install buildbot[docs]`")
 # If your documentation needs a minimal Sphinx version, state it here.
 needs_sphinx = '1.0'
 
@@ -54,9 +56,10 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.extlinks',
     'bbdocs.ext',
-    'bbdocs.highlighterrors',
+    'bbdocs.api_index',
     'sphinxcontrib.blockdiag',
     'sphinxcontrib.jinja',
+    'sphinx_rtd_theme',
 ]
 todo_include_todos = True
 
@@ -194,7 +197,7 @@ linkcheck_workers = 20
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'qtile'
+html_theme = 'sphinx_rtd_theme'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -244,7 +247,7 @@ html_sidebars = {
 # html_domain_indices = True
 
 html_use_index = True
-html_use_modindex = True
+html_use_modindex = False
 
 # If true, the index is split into individual pages for each letter.
 # html_split_index = False
@@ -326,6 +329,18 @@ jinja_contexts = {
     "data_api": {'raml': RamlSpec()},
     "telegram": {'commands': TelegramContact.describe_commands()},
 }
+
+raml_spec = RamlSpec()
+for raml_typename, raml_type in sorted(raml_spec.types.items()):
+    jinja_contexts['data_api_' + raml_typename] = {
+        'raml': raml_spec,
+        'name': raml_typename,
+        'type': raml_type,
+    }
+
+    doc_path = 'developer/raml/{}.rst'.format(raml_typename)
+    if not os.path.exists(doc_path):
+        raise Exception('File {} for RAML type {} does not exist'.format(doc_path, raml_typename))
 
 # Spell checker.
 try:

@@ -51,7 +51,10 @@ class HipChatStatusPush(HttpStatusPushBase):
 
     @defer.inlineCallbacks
     def getBuildDetailsAndSendMessage(self, build, key):
-        yield utils.getDetailsForBuild(self.master, build, **self.neededDetails)
+        yield utils.getDetailsForBuild(self.master, build, wantProperties=self.wantProperties,
+                                       wantSteps=self.wantSteps,
+                                       wantPreviousBuild=self.wantPreviousBuild,
+                                       wantLogs=self.wantLogs)
         postData = yield self.getRecipientList(build, key)
         postData['message'] = yield self.getMessage(build, key)
         extra_params = yield self.getExtraParams(build, key)
@@ -69,9 +72,10 @@ class HipChatStatusPush(HttpStatusPushBase):
 
     def getMessage(self, build, event_name):
         event_messages = {
-            'new': 'Buildbot started build %s here: %s' % (build['builder']['name'], build['url']),
-            'finished': 'Buildbot finished build %s with result %s here: %s'
-                        % (build['builder']['name'], statusToString(build['results']), build['url'])
+            'new': 'Buildbot started build {} here: {}'.format(build['builder']['name'],
+                                                               build['url']),
+            'finished': 'Buildbot finished build {} with result {} here: {}'.format(
+                build['builder']['name'], statusToString(build['results']), build['url'])
         }
         return event_messages.get(event_name, '')
 
@@ -93,7 +97,8 @@ class HipChatStatusPush(HttpStatusPushBase):
             urls.append('/v2/room/{}/notification'.format(postData.pop('room_id_or_name')))
 
         for url in urls:
-            response = yield self._http.post(url, params=dict(auth_token=self.auth_token), json=postData)
+            response = yield self._http.post(url, params=dict(auth_token=self.auth_token),
+                                             json=postData)
             if response.code != 200:
                 content = yield response.content()
                 log.error("{code}: unable to upload status: {content}",

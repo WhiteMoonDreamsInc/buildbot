@@ -23,10 +23,10 @@ To add reporter targets, you just append more objects to this list:
                                sendToInterestedUsers=False)
     c['services'].append(m)
 
-    c['services'].append(reporters.IRC(host="irc.example.com", nick="bb",
-                                      channels=[{"channel": "#example1"},
-                                                {"channel": "#example2",
-                                                 "password": "somesecretpassword"}]))
+    c['services'].append(reporters.irc.IRC(host="irc.example.com", nick="bb",
+                                           channels=[{"channel": "#example1"},
+                                                     {"channel": "#example2",
+                                                      "password": "somesecretpassword"}]))
 
 Most reporter objects take a ``tags=`` argument, which can contain a list of tag names: in this case, it will only show status for Builders that contains the named tags.
 
@@ -44,7 +44,9 @@ A full list of reporters is available in the :bb:index:`reporter`.
 MailNotifier
 ~~~~~~~~~~~~
 
-.. py:class:: buildbot.reporters.mail.MailNotifier
+.. py:currentmodule:: buildbot.reporters.mail
+
+.. py:class:: MailNotifier
 
 The Buildbot can send email when builds finish.
 The most common use of this is to tell developers when their change has caused the build to fail.
@@ -124,11 +126,12 @@ For example, if only short emails are desired (e.g., for delivery to phones):
 .. code-block:: python
 
     from buildbot.plugins import reporters
-    mn = reporters.MailNotifier(fromaddr="buildbot@example.org",
-                                sendToInterestedUsers=False,
-                                mode=('problem',),
-                                extraRecipients=['listaddr@example.org'],
-                                messageFormatter=reporters.MessageFormatter(template="STATUS: {{ summary }}"))
+    mn = reporters.MailNotifier(
+        fromaddr="buildbot@example.org",
+        sendToInterestedUsers=False,
+        mode=('problem',),
+        extraRecipients=['listaddr@example.org'],
+        messageFormatter=reporters.MessageFormatter(template="STATUS: {{ summary }}"))
 
 Another example of a function delivering a customized html email is given below:
 
@@ -173,13 +176,21 @@ MailNotifier arguments
     A list of email addresses to which messages should be sent (in addition to the InterestedUsers list, which includes any developers who made :class:`Change`\s that went into this build).
     It is a good idea to create a small mailing list and deliver to that, then let subscribers come and go as they please.
 
+``generators``
+    (list)
+    A list of instances of ``IReportGenerator`` which defines the conditions of when the messages will be sent and contents of them.
+    See :ref:`Report-Generators` for more information.
+
 ``subject``
-    (string).
+    (string, deprecated).
     A string to be used as the subject line of the message.
     ``%(builder)s`` will be replaced with the name of the builder which provoked the message.
 
 ``mode``
-    Mode is a list of strings; however there are two strings which can be used as shortcuts instead of the full lists.
+    (list of strings or string, deprecated).
+    Defines the cases when a message should be sent.
+    There are two strings which can be used as shortcuts instead of the full lists.
+
     The possible shortcuts are:
 
     ``all``
@@ -198,8 +209,7 @@ MailNotifier arguments
                                     mode="warnings")
         c['services'].append(mn)
 
-    (list of strings).
-    A combination of:
+    If the argument is list of strings, it must be a combination of:
 
     ``cancelled``
         Send mail about builds which were cancelled.
@@ -225,47 +235,47 @@ MailNotifier arguments
     Defaults to (``failing``, ``passing``, ``warnings``).
 
 ``builders``
-    (list of strings).
+    (list of strings, deprecated).
     A list of builder names for which mail should be sent.
     Defaults to ``None`` (send mail for all builds).
     Use either builders or tags, but not both.
 
 ``tags``
-    (list of strings).
+    (list of strings, deprecated).
     A list of tag names to serve status information for.
     Defaults to ``None`` (all tags).
     Use either builders or tags, but not both.
 
 ``schedulers``
-    (list of strings).
+    (list of strings, deprecated).
     A list of scheduler names to serve status information for.
     Defaults to ``None`` (all schedulers).
 
 ``branches``
-    (list of strings).
+    (list of strings, deprecated).
     A list of branch names to serve status information for.
     Defaults to ``None`` (all branches).
 
 ``addLogs``
-    (boolean).
+    (boolean, deprecated).
     If ``True``, include all build logs as attachments to the messages.
     These can be quite large.
     This can also be set to a list of log names, to send a subset of the logs.
     Defaults to ``False``.
 
 ``addPatch``
-    (boolean).
+    (boolean, deprecated).
     If ``True``, include the patch content if a patch was present.
     Patches are usually used on a :class:`Try` server.
     Defaults to ``True``.
 
 ``buildSetSummary``
-    (boolean).
+    (boolean, deprecated).
     If ``True``, send a single summary email consisting of the concatenation of all build completion messages rather than a completion message for each build.
     Defaults to ``False``.
 
 ``relayhost``
-    (string).
+    (string, deprecated).
     The host to which the outbound SMTP connection should be made.
     Defaults to 'localhost'
 
@@ -311,6 +321,7 @@ MailNotifier arguments
     Regardless of the setting of ``lookup``, ``MailNotifier`` will also send mail to addresses in the ``extraRecipients`` list.
 
 ``messageFormatter``
+    (optional, deprecated)
     This is an optional instance of the ``reporters.MessageFormatter`` class that can be used to generate a custom mail message.
     This class uses the Jinja2_ templating language to generate the body and optionally the subject of the mails.
     Templates can either be given inline (as string), or read from the filesystem.
@@ -325,6 +336,7 @@ MailNotifier arguments
     The value of ``watchedWorkers`` can also be set to *all* (default) or ``None``. You also need to specify email address to which the notification is sent in the worker configuration.
 
 ``messageFormatterMissingWorker``
+    (optional, deprecated)
     This is an optional instance of the ``reporters.messageFormatterMissingWorker`` class that can be used to generate a custom mail message for missing workers.
     This class uses the Jinja2_ templating language to generate the body and optionally the subject of the mails.
     Templates can either be given inline (as string), or read from the filesystem.
@@ -451,6 +463,7 @@ The default ``ctx`` for the missing worker email is made of:
 
 .. _Jinja2: http://jinja.pocoo.org/docs/dev/templates/
 
+.. _Pushover: https://pushover.net/
 
 .. bb:reporter:: PushoverNotifier
 
@@ -459,11 +472,13 @@ The default ``ctx`` for the missing worker email is made of:
 Pushover Notifications
 ~~~~~~~~~~~~~~~~~~~~~~
 
+.. py:currentmodule:: buildbot.reporters.pushover
+
 .. py:class:: buildbot.reporters.pushover.PushoverNotifier
 
 Apart of sending mail, Buildbot can send Pushover_ notifications. It can be used by administrators to receive an instant message to an iPhone or an Android device if a build fails. The :class:`PushoverNotifier` reporter is used to accomplish this. Its configuration is very similar to the mail notifications, however—due to the notification size constrains—the logs and patches cannot be attached.
 
-To use this reporter, you need to generate and application on the Pushover website https://pushover.net/apps/ and provide your user key and the API token.
+To use this reporter, you need to generate an application on the Pushover website https://pushover.net/apps/ and provide your user key and the API token.
 
 The following simple example will send a Pushover notification upon the completion of each build.
 The notification contains a description of the :class:`Build`, its results, and URLs where more information can be obtained. The ``user_key`` and ``api_token`` values should be replaced with proper ones obtained from the Pushover website for your application.
@@ -474,11 +489,12 @@ The notification contains a description of the :class:`Build`, its results, and 
     pn = reporters.PushoverNotifier(user_key="1234", api_token='abcd')
     c['services'].append(pn)
 
+The following parameters are accepted by this class:
 
-This notifier supports parameters ``subject``, ``mode``, ``builders``, ``tags``, ``schedulers``, ``branches``, ``buildSetSummary``, ``messageFormatter``, ``watchedWorkers``, and ``messageFormatterMissingWorker`` from the :bb:reporter:`mail notifier <MailNotifier>`. See above for their explanation.
-However, ``watchedWorkers`` defaults to *None*.
-
-The following additional parameters are accepted by this class:
+``generators``
+    (list)
+    A list of instances of ``IReportGenerator`` which defines the conditions of when the messages will be sent and contents of them.
+    See :ref:`Report-Generators` for more information.
 
 ``user_key``
     The user key from the Pushover website. It is used to identify the notification recipient.
@@ -494,12 +510,25 @@ The following additional parameters are accepted by this class:
 ``otherParams``
     Other parameters send to Pushover API. Check https://pushover.net/api/ for their list.
 
-.. _Pushover: https://pushover.net/
+Additionally, the following deprecated parameters are supported.
+They work in the same way as in the ``MailNotifier``, see above for their documentation.
 
+ * ``subject``
+ * ``mode``
+ * ``builders``
+ * ``tags``
+ * ``schedulers``
+ * ``branches``
+ * ``buildSetSummary``
+ * ``messageFormatter``
+ * ``watchedWorkers`` (differently from ``MailNotifier``, the default is ``None``)
+ * ``messageFormatterMissingWorker``
 
 .. bb:reporter:: PushjetNotifier
 
 .. index:: Pushjet
+
+.. _Pushjet: https://pushjet.io/
 
 Pushjet Notifications
 ~~~~~~~~~~~~~~~~~~~~~
@@ -509,9 +538,12 @@ Pushjet Notifications
 Pushjet_ is another instant notification service, similar to :bb:reporter:`Pushover <PushoverNotifier>`.
 To use this reporter, you need to generate a Pushjet service and provide its secret.
 
-The parameters ``subject``, ``mode``, ``builders``, ``tags``, ``schedulers``, ``branches``, ``buildSetSummary``, ``messageFormatter``, ``watchedWorkers``, and ``messageFormatterMissingWorker`` are common with :bb:reporter:`mail <MailNotifier>` and :bb:reporter:`Pushover <PushoverNotifier>` notifier.
+The following parameters are accepted by this class:
 
-The Pushjet specific parameters are:
+``generators``
+    (list)
+    A list of instances of ``IReportGenerator`` which defines the conditions of when the messages will be sent and contents of them.
+    See :ref:`Report-Generators` for more information.
 
 ``secret``
     This is a secret token for your Pushjet service. See http://docs.pushjet.io/docs/creating-a-new-service to learn how to create a new Pushjet service and get its secret token.
@@ -523,8 +555,19 @@ The Pushjet specific parameters are:
 ``base_url``
     Base URL for custom Pushjet instances. Defaults to https://api.pushjet.io.
 
-.. _Pushjet: https://pushjet.io/
+Additionally, the following deprecated parameters are supported.
+They work in the same way as in the ``MailNotifier``, see above for their documentation.
 
+ * ``subject``
+ * ``mode``
+ * ``builders``
+ * ``tags``
+ * ``schedulers``
+ * ``branches``
+ * ``buildSetSummary``
+ * ``messageFormatter``
+ * ``watchedWorkers`` (differently from ``MailNotifier``, the default is ``None``)
+ * ``messageFormatterMissingWorker``
 
 .. bb:reporter:: IRC
 
@@ -532,6 +575,10 @@ The Pushjet specific parameters are:
 
 IRC Bot
 ~~~~~~~
+
+.. py:currentmodule:: buildbot.reporters.irc
+
+.. py:class:: IRC
 
 The :bb:reporter:`IRC` reporter creates an IRC bot which will attach to certain channels and be available for status queries.
 It can also be asked to announce builds as they occur, or be told to shut up.
@@ -1017,7 +1064,7 @@ Revisions that are stored as hashes are shortened to 7 characters in length, as 
 GerritStatusPush
 ~~~~~~~~~~~~~~~~
 
-.. py:class:: buildbot.status.status_gerrit.GerritStatusPush
+.. py:currentmodule:: buildbot.reporters.status_gerrit
 
 :class:`GerritStatusPush` sends review of the :class:`Change` back to the Gerrit server, optionally also sending a message when a build is started.
 GerritStatusPush can send a separate review for each build that completes, or a single review summarizing the results for all of the builds.
@@ -1124,8 +1171,7 @@ GerritStatusPush can send a separate review for each build that completes, or a 
 HttpStatusPush
 ~~~~~~~~~~~~~~
 
-.. @cindex HttpStatusPush
-.. @stindex buildbot.reporters.HttpStatusPush
+.. py:currentmodule:: buildbot.reporters
 
 .. code-block:: python
 
@@ -1160,6 +1206,7 @@ It requires either `txrequests`_ or `treq`_ to be installed to allow interaction
     :param boolean wantPreviousBuild: include 'prev_build' in the build dictionary
     :param boolean debug: logs every requests and their response
     :param boolean verify: disable ssl verification for the case you use temporary self signed certificates
+    :param boolean skipEncoding: disables encoding of json data to bytes before pushing to server
 
 Json object spec
 ++++++++++++++++
@@ -1188,9 +1235,7 @@ The ``build`` parameter given to that function is of type :bb:rtype:`build`, opt
 GitHubStatusPush
 ~~~~~~~~~~~~~~~~
 
-
-.. @cindex GitHubStatusPush
-.. py:class:: buildbot.reporters.github.GitHubStatusPush
+.. py:currentmodule:: buildbot.reporters.github
 
 .. code-block:: python
 
@@ -1215,7 +1260,7 @@ It requires `txrequests`_ package to allow interaction with GitHub REST API.
 
 It is configured with at least a GitHub API token.
 
-You can create a token from you own `GitHub - Profile - Applications - Register new application <https://github.com/settings/applications>`_ or use an external tool to generate one.
+You can create a token from your own `GitHub - Profile - Applications - Register new application <https://github.com/settings/applications>`_ or use an external tool to generate one.
 
 .. py:class:: GitHubStatusPush(token, startDescription=None, endDescription=None, context=None, baseURL=None, verbose=False, builders=None)
 
@@ -1234,9 +1279,7 @@ You can create a token from you own `GitHub - Profile - Applications - Register 
 GitHubCommentPush
 ~~~~~~~~~~~~~~~~~
 
-
-.. @cindex GitHubCommentPush
-.. py:class:: buildbot.reporters.github.GitHubCommentPush
+.. py:currentmodule:: buildbot.reporters.github
 
 .. code-block:: python
 
@@ -1259,7 +1302,7 @@ It requires `txrequests`_ package to allow interaction with GitHub REST API.
 
 It is configured with at least a GitHub API token. By default, it will only comment at the end of a build unless a ``startDescription`` is provided.
 
-You can create a token from you own `GitHub - Profile - Applications - Register new application <https://github.com/settings/applications>`_ or use an external tool to generate one.
+You can create a token from your own `GitHub - Profile - Applications - Register new application <https://github.com/settings/applications>`_ or use an external tool to generate one.
 
 .. py:class:: GitHubCommentPush(token, startDescription=None, endDescription=None, baseURL=None, verbose=False, builders=None)
 
@@ -1282,12 +1325,15 @@ Here's a complete example of posting build results as a github comment:
     def getresults(props):
         all_logs=[]
         master = props.master
-        steps = yield props.master.data.get(('builders', props.getProperty('buildername'), 'builds', props.getProperty('buildnumber'), 'steps'))
+        steps = yield props.master.data.get(
+            ('builders', props.getProperty('buildername'), 'builds',
+            props.getProperty('buildnumber'), 'steps'))
         for step in steps:
             if step['results'] == util.Results.index('failure'):
                 logs = yield master.data.get(("steps", step['stepid'], 'logs'))
                 for l in logs:
-                    all_logs.append('Step : {0} Result : {1}'.format(step['name'], util.Results[step['results']]))
+                    all_logs.append('Step : {0} Result : {1}'.format(
+                                        step['name'], util.Results[step['results']]))
                     all_logs.append('```')
                     l['stepname'] = step['name']
                     l['content'] = yield master.data.get(("logs", l['logid'], 'contents'))
@@ -1307,9 +1353,6 @@ Here's a complete example of posting build results as a github comment:
 
 BitbucketServerStatusPush
 ~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. @cindex BitbucketServerStatusPush
-.. py:class:: buildbot.reporters.BitbucketServer.BitbucketServerStatusPush
 
 .. code-block:: python
 
@@ -1353,8 +1396,7 @@ As a result, we recommend you use https in your base_url rather than http.
 BitbucketServerPRCommentPush
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. @cindex BitbucketServerPRCommentPush
-.. py:class:: buildbot.reporters.BitbucketServer.BitbucketServerPRCommentPush
+.. py:currentmodule:: buildbot.reporters.bitbucketserver
 
 .. code-block:: python
 
@@ -1369,36 +1411,53 @@ BitbucketServerPRCommentPush
 :class:`BitbucketServerPRCommentPush`  publishes a comment on a PR using `Bitbucket Server REST API <https://developer.atlassian.com/static/rest/bitbucket-server/5.0.1/bitbucket-rest.html#idm45993793481168>`_.
 
 
-.. py:class:: BitBucketServerPRCommentPush(base_url, user, password, messageFormatter=None, verbose=False, debug=None, verify=None, mode=('failing', 'passing', 'warnings'), tags=None, builders=None, schedulers=None, branches=None, buildSetSummary=False):
+.. py:class:: BitbucketServerPRCommentPush(base_url, user, password, messageFormatter=None, verbose=False, debug=None, verify=None, mode=('failing', 'passing', 'warnings'), tags=None, builders=None, schedulers=None, branches=None, buildSetSummary=False, generators=None):
 
-    :param string base_url: The base url of the Bitbucket server host
-    :param string user: The Bitbucket server user to post as. (can be a :ref:`Secret`)
-    :param string password: The Bitbucket server user's password. (can be a :ref:`Secret`)
-    :param messageFormatter: This is an optional instance of :class:`MessageFormatter` that can be used to generate a custom comment.
-    :param boolean verbose: If True, logs a message for each successful status push.
-    :param boolean debug: logs every requests and their response
-    :param boolean verify: disable ssl verification for the case you use temporary self signed certificates
-    :param list mode: A list of strings which will determine the build status that will be reported.
-        The values could be ``change``, ``failing``, ``passing``, ``problem``, ``warnings`` or ``exception``.
-        There are two shortcuts:
+The following parameters are accepted by this reporter:
 
-            ``all``
-                Equivalent to (``change``, ``failing``, ``passing``, ``problem``, ``warnings``, ``exception``)
+``base_url``
+    (string)
+    The base url of the Bitbucket server host.
 
-            ``warnings``
-                Equivalent to (``warnings``, ``failing``).
+``user``
+    (string)
+    The Bitbucket server user to post as. (can be a :ref:`Secret`)
 
-    :param list tags: A list of tag names to serve status information for.
-        Defaults to ``None`` (all tags).
-        Use either builders or tags, but not both.
-    :param list builders: Only send update for specified builders.
-        Defaults to ``None`` (all builders).
-        Use either builders or tags, but not both
-    :param list schedulers: A list of scheduler names to serve status information for.
-        Defaults to ``None`` (all schedulers).
-    :param list branches: A list of branch names to serve status information for.
-        Defaults to ``None`` (all branches).
-    :param boolean buildSetSummary: If true, post a comment when a build set is finished with all build completion messages in it, instead of doing it for each separate build.
+``password``
+    (string)
+    The Bitbucket server user's password. (can be a :ref:`Secret`)
+
+``generators``
+    (list)
+    A list of instances of ``IReportGenerator`` which defines the conditions of when the messages will be sent and contents of them.
+    See :ref:`Report-Generators` for more information.
+
+``verbose``
+    (boolean, defaults to ``False``)
+    If ``True``, logs a message for each successful status push.
+
+``debug``
+    (boolean, defaults to ``False``)
+    If ``True``, logs every requests and their response
+
+``verify``
+    (boolean, defaults to ``None``)
+    If ``False``, disables SSL verification for the case you use temporary self signed certificates.
+    Default enables SSL verification.
+
+Additionally, the following deprecated parameters are supported.
+They work in the same way as in the ``MailNotifier``, see above for their documentation.
+
+ * ``subject``
+ * ``mode``
+ * ``builders``
+ * ``tags``
+ * ``schedulers``
+ * ``branches``
+ * ``buildSetSummary``
+ * ``messageFormatter``
+ * ``watchedWorkers`` (differently from ``MailNotifier``, the default is ``None``)
+ * ``messageFormatterMissingWorker``
 
 .. Note::
     This reporter depends on the Bitbucket server hook to get the pull request url.
@@ -1408,7 +1467,7 @@ BitbucketServerPRCommentPush
 BitbucketStatusPush
 ~~~~~~~~~~~~~~~~~~~
 
-.. py:class:: buildbot.reporters.bitbucket.BitbucketStatusPush
+.. py:currentmodule:: buildbot.reporters.bitbucket
 
 .. code-block:: python
 
@@ -1444,14 +1503,14 @@ After creating the consumer, you will then be able to see the OAuth key and secr
 GitLabStatusPush
 ~~~~~~~~~~~~~~~~
 
-.. @cindex GitLabStatusPush
-.. py:class:: buildbot.reporters.gitlab.GitLabStatusPush
+.. py:currentmodule:: buildbot.reporters.gitlab
 
 .. code-block:: python
 
     from buildbot.plugins import reporters
 
-    gl = reporters.GitLabStatusPush('private-token', context='continuous-integration/buildbot', baseURL='https://git.yourcompany.com')
+    gl = reporters.GitLabStatusPush('private-token', context='continuous-integration/buildbot',
+                                    baseURL='https://git.yourcompany.com')
     c['services'].append(gl)
 
 :class:`GitLabStatusPush` publishes build status using `GitLab Commit Status API <http://doc.gitlab.com/ce/api/commits.html#commit-status>`_.
@@ -1479,8 +1538,9 @@ It uses private token auth, and the token owner is required to have at least dev
 HipchatStatusPush
 ~~~~~~~~~~~~~~~~~
 
-.. @cindex HipchatStatusPush
-.. py:class:: buildbot.reporters.hipchat.HipchatStatusPush
+.. py:currentmodule:: buildbot.reporters.hipchat
+
+.. py:class:: HipchatStatusPush
 
 .. code-block:: python
 
@@ -1602,7 +1662,9 @@ Here's a complete example:
 GerritVerifyStatusPush
 ~~~~~~~~~~~~~~~~~~~~~~
 
-.. py:class:: buildbot.status.status_gerrit_verify_status.GerritVerifyStatusPush
+.. py:currentmodule:: buildbot.reporters.status_gerrit_verify_status
+
+.. py:class:: GerritVerifyStatusPush
 
 :class:`GerritVerifyStatusPush` sends a verify status to Gerrit using the verify-status_ Gerrit plugin.
 
@@ -1647,14 +1709,14 @@ This property must be a list of dictionaries, containing ``change_id`` and ``rev
 ZulipStatusPush
 ~~~~~~~~~~~~~~~~~
 
-.. @cindex ZulipStatusPush
-.. py:class:: buildbot.reporters.zulip.ZulipStatusPush
+.. py:currentmodule:: buildbot.reporters.zulip
 
 .. code-block:: python
 
     from buildbot.plugins import reporters
 
-    zs = reporters.ZulipStatusPush(endpoint='your-organization@zulipchat.com', token='private-token', stream='stream_to_post_in')
+    zs = reporters.ZulipStatusPush(endpoint='your-organization@zulipchat.com',
+                                   token='private-token', stream='stream_to_post_in')
     c['services'].append(zs)
 
 :class:`ZulipStatusPush` sends build status using `The Zulip API <https://zulipchat.com/api/>`_.
